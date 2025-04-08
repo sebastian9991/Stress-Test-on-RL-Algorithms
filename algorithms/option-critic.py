@@ -1,6 +1,4 @@
 
-from hmac import new
-from tokenize import Double
 from collections import deque
 import numpy as np
 import gymnasium as gym
@@ -13,8 +11,8 @@ import gymnasium as gym
 import ale_py
 gym.register_envs(ale_py)
 
-class ActorCritic:
-    def __init__(self, env: gym.Env, lr: float, lr_v: float, gamma: float = 1, T=0.1, T_decay=None, device='cpu', seed: int = 23, input_scale=1.0):
+class OptionCritic:
+    def __init__(self, env: gym.Env, lr: float, lr_v: float, gamma: float = 1, T=0.1, T_decay=None, device='cpu', seed: int = 23, input_scale=1.0, num_options=4):
         self.env = env
         self.lr = lr
         self.lr_v = lr_v
@@ -25,6 +23,7 @@ class ActorCritic:
         self.T = T
         self.T_decay = T_decay
         self.input_scale = input_scale
+        self.num_options = num_options
 
         # We have 1d observations for this assignment, but adding more for more general case
         self.observation_size = 1
@@ -32,24 +31,39 @@ class ActorCritic:
             self.observation_size = self.observation_size * x
 
         self.actions = list(range(env.action_space.n))
-        self.z = torch.nn.Sequential(
+
+        # Common backbone for all networks
+        self.backbone = torch.nn.Sequential(
             torch.nn.Linear(self.observation_size, 128),
             torch.nn.ReLU(),
             torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, env.action_space.n)
+            torch.nn.ReLU())
+
+        # From state to picking an action, deciding to stop an option
+        self.option_policies = torch.nn.ModuleList()
+        self.termination_policies = torch.nn.ModuleList()
+        for i in range(num_options):
+            self.option_policies.append(
+                torch.nn.Sequential(
+                    torch.nn.Linear(64, env.action_space.n)
+                )
+            )
+            self.termination_policies.append(
+                torch.nn.Sequential(
+                    torch.nn.Linear(64, 1)
+                )
+            )
+        self.option_policies.to(device)
+        self.termination_policies.to(device)
+
+        # From state to the value of each option
+        self.Q_state_opts = torch.nn.Sequential(
+            torch.nn.Linear(64, num_options)
         )
-        self.v = torch.nn.Sequential(
-            torch.nn.Linear(self.observation_size, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 1)
-        )
+        self.Q_state_opts.to(device)
 
         self.reinit_weights()
 
-        self.z.to(device)
         self.optimizer = torch.optim.RMSprop(self.z.parameters(), lr=self.lr)
         self.optimizer_v = torch.optim.RMSprop(self.v.parameters(), lr=self.lr_v)
 
@@ -58,77 +72,63 @@ class ActorCritic:
         np.random.seed(seed)
         self.seed = seed
 
-    def plot_reward(self, rewards: list) -> None:
-        fig, axs = plt.subplots(2, 2, figsize=(10, 5))
-        # Plot the rewards
-
-        axs[0, 0].plot(rewards)
-        axs[0, 0].set_title("Reward")
-        axs[0, 0].set_xlabel("Time")
-        axs[0, 0].set_ylabel("Reward")
-
-        # Plot the cumulative reward
-        cumulative = np.cumsum(rewards)
-        axs[1, 0].plot(cumulative)
-        axs[1, 0].set_title("Cumulative Reward")
-        axs[1, 0].set_xlabel("Episode")
-        axs[1, 0].set_ylabel("Reward")
-
-        # Plot the moving average
-        moving_average = []
-        for i in range(len(rewards)):
-            moving_average.append(np.mean(rewards[max(0, i - 5):min(len(rewards), i + 5)]))
-        axs[0, 1].plot(moving_average)
-        axs[0, 1].set_title("Moving Average")
-        axs[0, 1].set_xlabel("Episode")
-        axs[0, 1].set_ylabel("Reward")
-
-        # Space out the subplots by a bit
-        plt.tight_layout()
-        plt.show()
-
     def reinit_weights(self) -> None:
-        for layer in self.z:
+        for layer in self.Q_state_opts:
             if isinstance(layer, torch.nn.Linear):
                 torch.nn.init.uniform_(layer.weight, -0.001, 0.001)
                 torch.nn.init.uniform_(layer.bias, -0.001, 0.001)
 
-    def do_episode(self, episode_len, episode):
+        for network in self.option_policies:
+            for layer in network:
+                if isinstance(layer, torch.nn.Linear):
+                    torch.nn.init.uniform_(layer.weight, -0.001, 0.001)
+                    torch.nn.init.uniform_(layer.bias, -0.001, 0.001)
 
-        state, _ = self.env.reset(
-            seed=self.seed + episode)  # ADD epsiode so the seed is different for each episode
+        for network in self.termination_policies:
+            for layer in network:
+                if isinstance(layer, torch.nn.Linear):
+                    torch.nn.init.uniform_(layer.weight, -0.001, 0.001)
+                    torch.nn.init.uniform_(layer.bias, -0.001, 0.001)
 
-        states = []
-        actions = []
-        log_probs = []
-        rewards = []
-        t = 0
-        while t < episode_len:
-            output = self.z.forward(torch.from_numpy(state/self.input_scale).float().to(self.device)).squeeze()
+    # Batch is a list of tuples from the replay buffer
+    # All will be numpy arrays
+    def update_Q(self, batch) -> None:
+        # Batch is a list of tuples from the replay buffer
+        # Update the Q function
+        # Every element 0 of the tuple is the observation. We need to stack them to get a tensor of observations
+        # Format is (observation, action, reward, observation_prime, terminated or truncated)
+        batch = list(zip(*batch))
+        states = torch.stack([torch.from_numpy(s).float() for s in batch[0]])
+        actions = torch.tensor(batch[1])
+        rewards = torch.tensor(batch[2])
+        next_states = torch.stack([torch.from_numpy(s).float() for s in batch[3]])
+        terminated = torch.tensor(batch[4], dtype=torch.bool)
+        #print(terminated)
 
-            if self.T_decay is None:
-                probs = torch.nn.functional.softmax(output/(self.T))
-            else:
-                probs = torch.nn.functional.softmax(output/(self.T*self.T_decay**episode))
+        # Get the next values
+        with torch.no_grad():
+            next_values = torch.max(self.Q_state_opts.forward(next_states), dim=1).values
 
-            action = np.random.choice(self.actions, p=probs.detach().cpu().numpy())
+        # Use terminated to mask next_values
+        next_values[terminated] =0 
+        y = rewards + self.gamma * next_values
 
-            log_prob = torch.log(probs[action])
+        value_estimates = self.Q_state_opts.forward(states)
+        state_value_estimates = value_estimates.gather(1, actions.unsqueeze(1)).squeeze(1)
 
-            # print("Action off device: ", action)
-            new_state, reward, terminated, truncated, info = self.env.step(action)
-
-            states.append(state)
-            actions.append(action)
-            log_probs.append(log_prob)
-            rewards.append(reward)
-
-            t += 1
-            state = new_state
-            if terminated or truncated:
-                break
-
-        return [states, actions, log_probs, rewards]
+        #print(state_value_estimates.shape)
+        #print(y.shape)
+        
+        self.optimizer.zero_grad()
+        loss_fn = torch.nn.MSELoss()
+        loss = loss_fn(state_value_estimates, y)
+        #print("LOSS: ",loss)
+        loss.backward()
+        self.optimizer.step()
+    
+    # TODO: Implement according to g_t^1 of the paper
+    def Q_swa(self):
+        return None
 
     def train(self, num_episodes: int, episode_len: int, plot_results=False):
         # Collect episode
@@ -144,7 +144,28 @@ class ActorCritic:
 
             rewards = []
             t = 0
+            # TODO Choose ω according to an epsilon-soft policy over optionsπΩ(s)
+
+
             while t < episode_len:
+                #TODO Choose action according to option policy
+                
+
+                #TODO δ ← r − QU (s, ω, a)
+                
+                #TODO if non terminal, add gamma * QU (s', ω, a)
+
+                #TODO QU(swa) ← QU(swa) + α * δ
+
+
+                #TODO Options improvements
+
+
+                #TODO Critic improvements
+                # I think just classic Q-learning is good here
+
+
+
                 output = self.z.forward(torch.from_numpy(state / self.input_scale).float().to(self.device)).squeeze()
 
                 if self.T_decay is None:
@@ -198,10 +219,10 @@ class ActorCritic:
 
 
 if __name__ == "__main__":
-    env_name = "Acrobot-v1"
+    env_name = "ALE/Assault-ram-v5"
     # env_name = "ALE/Assault-ram-v5"
     env = gym.make(env_name)
-    model = ActorCritic(env, lr=0.003, lr_v=0.003, seed=25, T=4, input_scale=1)
+    model = OptionCritic(env, lr=0.003, lr_v=0.003, seed=25, T=4, input_scale=1)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
     model.train(100, 2000)
 
