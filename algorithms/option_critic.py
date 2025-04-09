@@ -1,6 +1,7 @@
 
 from collections import deque
 from re import S
+import re
 import stat
 import numpy as np
 import gymnasium as gym
@@ -130,6 +131,8 @@ class OptionCritic:
 
         state_encoding = self.backbone.forward(states / self.input_scale)
         value_estimates = self.Q_state_opts.forward(state_encoding)
+        #print("Value estimates: ", value_estimates)
+        #print("Actions: ", actions)
         state_value_estimates = value_estimates.gather(1, actions.unsqueeze(1)).squeeze(1)
 
         #print(state_value_estimates.shape)
@@ -155,7 +158,7 @@ class OptionCritic:
             result = reward + self.gamma*(1 - termination_prob) * Qw_this + self.gamma * termination_prob * Qw_best
             return result.detach().cpu().numpy()
 
-    def train(self, num_episodes: int, episode_len: int, plot_results=False, use_buffer = False, replay =1000000, batch_size = 16):
+    def train(self, num_episodes: int, episode_len: int, plot_results=False, use_buffer = True, replay =1000000, batch_size = 16):
         # Collect episode
         # update replay buffer if you have one
         # update the Neural network
@@ -181,6 +184,8 @@ class OptionCritic:
                 opts = np.ones(self.num_options) * self.epsilon / self.num_options
                 opts[best_action] = 1 - self.epsilon + self.epsilon / self.num_options
                 option = np.random.choice(self.num_options, p=opts)
+
+            episode_reward = 0
 
 
             while t < episode_len:
@@ -212,11 +217,13 @@ class OptionCritic:
                 #TODO Options improvements
                 log_prob = torch.log(action_probs[action])
                 self.optimizer.zero_grad()
-                option_loss = - self.alpha_option * QU_swa * log_prob
-                option_loss.backward()
+                option_loss = - self.alpha_option * torch.from_numpy(QU_swa) * log_prob
+                #print("OPTION LOSS: ", option_loss)
+                option_loss.backward(retain_graph=True)
                 self.optimizer.step()
 
                 #TODO Termination improvements
+                state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
                 termination_prob = self.termination_policies[option].forward(state_encoding)
 
                 with torch.no_grad():
@@ -228,16 +235,17 @@ class OptionCritic:
 
                     value = torch.sum(new_value * opts)
                     advantage = value - new_value[option]
-                    advantage = advantage.item().detach()
+                    advantage = advantage.item()
 
                 termination_loss = self.alpha_termination * advantage * termination_prob
                 self.optimizer.zero_grad()
+                #print("TERMINATION LOSS: ", termination_loss)
                 termination_loss.backward()
                 self.optimizer.step()
 
                 # Replay buffer
                 if use_buffer:
-                    D.append((state, action, reward, observation, terminated or truncated))
+                    D.append((state, option, reward, observation, terminated or truncated))
                     if len(D) > replay:
                         #D.pop(0)
                         pass
@@ -254,21 +262,24 @@ class OptionCritic:
                         batch = D
                 # No replay buffer
                 else:
-                    batch = [(state, action, reward, observation, terminated or truncated)]
-                    
+                    batch = [(state, option, reward, observation, terminated or truncated)]
+                #print("Batch: ", len(batch))
                 self.update_Q(batch)
 
 
 
                 #TODO Critic improvements
                 # I think just classic Q-learning is good here
-
+                episode_reward += reward
                 rewards.append(reward)
 
                 t += 1
                 state = observation
                 if terminated or truncated:
                     break
+            print("Episode: ", episode)
+            print("Episode reward: ", episode_reward)
+            print("Episode length: ", t)
 
         self.env.close()
 
