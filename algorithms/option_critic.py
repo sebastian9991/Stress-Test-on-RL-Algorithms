@@ -1,8 +1,4 @@
 
-from collections import deque
-from re import S
-import re
-import stat
 import numpy as np
 import gymnasium as gym
 import matplotlib.pyplot as plt
@@ -17,8 +13,8 @@ gym.register_envs(ale_py)
 
 class OptionCritic:
     def __init__(self, env: gym.Env, lr: float = 0.001, gamma: float = 1, T=0.1, T_decay=None, device='cpu', 
-                 seed: int = 23, input_scale=1.0, num_options=4, epsilon=0.001, alpha_critic =0.0001, alpha_option=0.00001,
-                 alpha_termination=0.1):
+                 seed: int = 23, input_scale=1.0, num_options=2, epsilon=0.1, alpha_critic =0.0001, alpha_option=0.001,
+                 alpha_termination=0.0001):
         self.env = env
         self.seed = seed
         self.device = device
@@ -43,9 +39,9 @@ class OptionCritic:
 
         # Common backbone for all networks
         self.backbone = torch.nn.Sequential(
-            torch.nn.Linear(self.observation_size, 128),
+            torch.nn.Linear(self.observation_size, 256),
             torch.nn.ReLU(),
-            torch.nn.Linear(128, 64),
+            torch.nn.Linear(256, 64),
             torch.nn.ReLU())
 
         # From state to picking an action, deciding to stop an option
@@ -89,20 +85,23 @@ class OptionCritic:
     def reinit_weights(self) -> None:
         for layer in self.Q_state_opts:
             if isinstance(layer, torch.nn.Linear):
-                torch.nn.init.uniform_(layer.weight, -0.001, 0.001)
-                torch.nn.init.uniform_(layer.bias, -0.001, 0.001)
+                torch.nn.init.xavier_uniform_(layer.weight)
+                if layer.bias is not None:
+                    torch.nn.init.constant_(layer.bias, 0)
 
         for network in self.option_policies:
             for layer in network:
                 if isinstance(layer, torch.nn.Linear):
-                    torch.nn.init.uniform_(layer.weight, -0.001, 0.001)
-                    torch.nn.init.uniform_(layer.bias, -0.001, 0.001)
+                    torch.nn.init.xavier_uniform_(layer.weight)
+                    if layer.bias is not None:
+                        torch.nn.init.constant_(layer.bias, 0)
 
         for network in self.termination_policies:
             for layer in network:
                 if isinstance(layer, torch.nn.Linear):
-                    torch.nn.init.uniform_(layer.weight, -0.001, 0.001)
-                    torch.nn.init.uniform_(layer.bias, -0.001, 0.001)
+                    torch.nn.init.xavier_uniform_(layer.weight)
+                    if layer.bias is not None:
+                        torch.nn.init.constant_(layer.bias, 0)
 
     # Batch is a list of tuples from the replay buffer
     # All will be numpy arrays
@@ -146,18 +145,31 @@ class OptionCritic:
     
     # TODO: Implement according to g_t^1 of the paper
     def Q_swa(self, reward, state_encoding, option):
+        # Should implement r + γ(1 − βω,θ(s′))QΩ(s′, ω) +γβω,θ(s′) max ω QΩ(s′,  ̄ω)
+        Qw = self.Q_state_opts.forward(state_encoding)
+        Qw_this = Qw[option]
+        Qw_best = Qw.max()
 
-        
-            Qw = self.Q_state_opts.forward(state_encoding)
-            Qw_this = Qw[option]
-            Qw_best = Qw.max()
+        termination_prob = self.termination_policies[option].forward(state_encoding)
 
-            termination_prob = self.termination_policies[option].forward(state_encoding)
-
-            result = reward + self.gamma*(1 - termination_prob) * Qw_this + self.gamma * termination_prob * Qw_best
-            return result
-
-    def train(self, num_episodes: int, episode_len: int, plot_results=False, use_buffer = True, replay =1000000, batch_size = 16):
+        result = reward + self.gamma*(1 - termination_prob) * Qw_this + self.gamma * termination_prob * Qw_best
+        return result
+    
+    def epsilon_soft_policy(self, action_logits):
+        """
+        Epsilon soft policy. Returns a distribution over actions
+        Args:
+            action_logits: logits of the actions
+        Returns:
+            action_probs: epsilon soft distribution over actions
+        """
+        action_probs = torch.nn.functional.softmax(action_logits, dim=0)
+        #print("Action probs after softmax, before softening: ", action_probs)
+        # Make epsilon soft
+        soft_probs = (1 - self.epsilon) * action_probs + (self.epsilon / len(action_logits)) 
+        return soft_probs
+    
+    def do_episode(self, num_episodes: int, episode_len: int, plot_results=False, use_buffer = True, replay =1000000, batch_size = 16):
         # Collect episode
         # update replay buffer if you have one
         # update the Neural network
@@ -165,7 +177,6 @@ class OptionCritic:
 
         self.seed_model(self.seed)
         total_rewards_v = []
-        D = deque(maxlen=replay)
 
         for episode in tqdm(range(num_episodes), leave=False, desc="Episodes"):
             state, _ = self.env.reset(
@@ -188,105 +199,33 @@ class OptionCritic:
 
 
             while t < episode_len:
+
+                ### TAKE ACTION ###
                 # Load the common backbone to get our state encoding
                 state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
 
                 # Choose action according to option policy
-                action_probs = self.option_policies[option].forward(state_encoding)
-                #print("Action probs before softmax: ", action_probs)
-                action_probs = torch.nn.functional.softmax(action_probs, dim=0)
-                action_probs = (1 - self.epsilon) * action_probs + (self.epsilon / len(self.actions)) 
-                #print("Action probs: ", action_probs)
-
+                action_logits = self.option_policies[option].forward(state_encoding)
+                #print("Action probs before softmax: ", action_logits)
+                action_probs = self.epsilon_soft_policy(action_logits)
+                #print("Action probs after softmax: ", action_probs)
                 action = np.random.choice(self.actions, p=action_probs.detach().cpu().numpy())
-
                 observation, reward, terminated, truncated, info = self.env.step(action)
 
-                #TODO δ ← r − QU (s, ω, a)
-                QU_swa = self.Q_swa(reward, state_encoding, option)
-                delta = reward - QU_swa
-
-                #TODO if non terminal, add gamma * QU (s', ω, a)
-                with torch.no_grad():
-                        new_state_encoding = self.backbone.forward(torch.from_numpy(observation / self.input_scale).float().to(self.device))
-                if not terminated and not truncated:
-                    delta = delta + self.Q_swa(0, new_state_encoding, option) # Reward of 0 for Q_swa as per the pseudocode from paper
-
-
-                #TODO QU(swa) ← QU(swa) + α * δ
-                QU_swa = QU_swa + self.alpha_critic * delta
-
-
-                #TODO Options improvements
-                log_prob = torch.log(action_probs[action])
-                self.optimizer.zero_grad()
-                option_loss = - self.alpha_option * QU_swa * log_prob
-                #print("OPTION LOSS: ", option_loss)
-                option_loss.backward(retain_graph=True)
-                self.optimizer.step()
-
-                #TODO Termination improvements
-                state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
                 termination_prob = self.termination_policies[option].forward(state_encoding)
+                new_state_encoding = self.backbone.forward(torch.from_numpy(observation / self.input_scale).float().to(self.device))
 
-                with torch.no_grad():
-                    new_value = self.Q_state_opts.forward(new_state_encoding)
-
-                    best_action = torch.argmax(new_value).item()
-                    opts = np.ones(self.num_options) * self.epsilon / self.num_options
-                    opts[best_action] = 1 - self.epsilon + self.epsilon / self.num_options
-
-                    value = torch.sum(new_value * opts)
-                    advantage = value - new_value[option]
-                    advantage = advantage.item()
-
-                termination_loss = - self.alpha_termination * advantage * torch.log(termination_prob + 1e-6)
-                self.optimizer.zero_grad()
-                #print("TERMINATION LOSS: ", termination_loss)
-                termination_loss.backward()
-                self.optimizer.step()
-
-                
-                #TODO Critic improvements
-                # I think just classic Q-learning is good here
-                # Replay buffer
-                if replay:
-                    D.append((state, option, reward, observation, terminated or truncated))
-                    if len(D) > replay:
-                        #D.pop(0)
-                        pass
-                    if len(D) > batch_size:
-                        try:
-                            # I THINK IT's looking across dimensions. Look later
-                            batch_indexes = np.random.choice(len(D), batch_size)
-                            batch = [D[i] for i in batch_indexes]
-                        except:
-                            print("TIME: ",t)
-                            print(D[0])
-                            exit()
-                    else:
-                        batch = D
-                # No replay buffer
-                else:
-                    batch = [(state, option, reward, observation, terminated or truncated)]
-                #print("Batch: ", len(batch))
-                self.update_Q(batch)
-                
-
-                #TODO If option policy terminates, choose new option
+                ### CHANGE OPTION ###
                 if np.random.rand() < termination_prob.item():
                     with torch.no_grad():
-                        option_probs = self.Q_state_opts.forward(new_state_encoding)
-                        best_action = torch.argmax(option_probs).item()
-                        opts = np.ones(self.num_options) * self.epsilon / self.num_options
-                        opts[best_action] = 1 - self.epsilon + self.epsilon / self.num_options
-                        option = np.random.choice(self.num_options, p=opts)
+                        new_option_values = self.Q_state_opts.forward(new_state_encoding)
+                        #print("New option values: ", new_option_values)
+                        option_probs = self.epsilon_soft_policy(new_option_values)
+                        #print("Option probs: ", option_probs)
+                        option = np.random.choice(self.num_options, p=option_probs.detach().cpu().numpy())
                     #print("New option: ", option)
 
                 #print("action: ", action)
-
-
-
 
                 episode_reward += reward
                 rewards.append(reward)
@@ -304,20 +243,178 @@ class OptionCritic:
         return total_rewards_v
 
 
+    def train(self, num_episodes: int, episode_len: int, plot_results=False, use_buffer = True, replay =1000000, batch_size = 16):
+        # Collect episode
+        # update replay buffer if you have one
+        # update the Neural network
+        # Replay and batch size only used if use_buffer is True
+
+        self.seed_model(self.seed)
+        total_rewards_v = []
+
+        for episode in tqdm(range(num_episodes), leave=False, desc="Episodes"):
+            state, _ = self.env.reset(
+                seed=self.seed + episode)  # ADD epsiode so the seed is different for each episode
+
+            rewards = []
+            t = 0
+
+            state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
+
+            # TODO Choose ω according to an epsilon-soft policy over optionsπΩ(s)
+            with torch.no_grad():
+                action_probs = self.Q_state_opts.forward(state_encoding)
+                best_action = torch.argmax(action_probs).item()
+                opts = np.ones(self.num_options) * self.epsilon / self.num_options
+                opts[best_action] = 1 - self.epsilon + self.epsilon / self.num_options
+                option = np.random.choice(self.num_options, p=opts)
+
+            episode_reward = 0
+
+
+            while t < episode_len:
+
+                ### TAKE ACTION ###
+                # Load the common backbone to get our state encoding
+                state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
+
+                # Choose action according to option policy
+                action_logits = self.option_policies[option].forward(state_encoding)
+                #print("Action probs before softmax: ", action_logits)
+                action_probs = self.epsilon_soft_policy(action_logits)
+                #print("Action probs after softmax: ", action_probs)
+                action = np.random.choice(self.actions, p=action_probs.detach().cpu().numpy())
+                observation, reward, terminated, truncated, info = self.env.step(action)
+
+                ### UPDATE THE Q FUNCTION ###
+
+                # Create the target for the Q function
+                with torch.no_grad():
+                    next_state_encoding = self.backbone.forward(torch.from_numpy(observation / self.input_scale).float().to(self.device))
+                    next_value = self.Q_state_opts.forward(next_state_encoding)
+                    next_state_option_value = next_value[option]
+                    best_action = torch.argmax(next_value).item()
+
+                    next_state_termination_prob = self.termination_policies[option].forward(next_state_encoding)
+
+                    next_state_value = (1-next_state_termination_prob) * next_state_option_value + next_state_termination_prob * next_value[best_action]
+                    if not terminated and not truncated:
+                        current_state_value_target = reward + self.gamma * next_state_value
+                        current_state_value_target = current_state_value_target
+                    else:
+                        current_state_value_target = reward
+                    current_state_value_target = torch.tensor(current_state_value_target)
+
+                # Update the Q function
+                self.optimizer.zero_grad()
+                #print(current_state_value_target)
+                #print(self.Q_state_opts.forward(state_encoding)[option])
+                q_loss = torch.nn.MSELoss()(self.Q_state_opts.forward(state_encoding)[option], current_state_value_target)
+                #print("Q LOSS: ", q_loss)
+                q_loss.backward()
+                self.optimizer.step()
+
+
+
+                ### UPDATE THE OPTION POLICY ###
+                #print(action_probs)
+                # Recompute the action probs for a fresh graph
+                state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
+                action_logits = self.option_policies[option].forward(state_encoding)
+                action_probs = self.epsilon_soft_policy(action_logits)
+
+                # Get a baseline for the advantage
+                with torch.no_grad():
+                    baseline = torch.sum(self.Q_state_opts(state_encoding) * self.epsilon_soft_policy(self.Q_state_opts(state_encoding)))
+                    advantage = current_state_value_target - baseline
+                    #print("Option advantage", advantage)
+
+
+                log_prob = torch.log(action_probs[action] + 1e-6)
+                #print("Log prob: ", log_prob)
+                self.optimizer.zero_grad()
+                option_loss = - self.alpha_option * advantage * log_prob
+                #print("OPTION LOSS: ", option_loss)
+                option_loss.backward()
+                self.optimizer.step()
+
+                ### UPDATE THE TERMINATION POLICY ###
+                
+                # Recompute the action probs for a fresh graph
+                new_state_encoding = self.backbone.forward(torch.from_numpy(state / self.input_scale).float().to(self.device))
+                termination_prob = self.termination_policies[option].forward(new_state_encoding)
+
+                with torch.no_grad():
+                    new_option_values = self.Q_state_opts.forward(new_state_encoding)
+                    current_option_value = new_option_values[option]
+                    option_probs = self.epsilon_soft_policy(new_option_values)
+
+                    new_value = torch.sum(new_option_values * option_probs)
+
+                    advantage = (current_option_value - new_value).item()
+                    #print("Termination advantage", advantage)
+
+                self.optimizer.zero_grad()
+                termination_loss = - self.alpha_termination * advantage * termination_prob # TODO IS THIS CORRECT??? +/-?
+                #print("Loss: ", termination_loss, " Advantage: ", advantage, " Termination prob: ", termination_prob)
+                #print("TERMINATION LOSS: ", termination_loss)
+                termination_loss.backward()
+                # Print computation graph
+                self.optimizer.step()
+
+                ### CHANGE OPTION ###
+                if np.random.rand() < termination_prob.item():
+                    with torch.no_grad():
+                        new_option_values = self.Q_state_opts.forward(new_state_encoding)
+                        #print("New option values: ", new_option_values)
+                        option_probs = self.epsilon_soft_policy(new_option_values)
+                        #print("Option probs: ", option_probs)
+                        option = np.random.choice(self.num_options, p=option_probs.detach().cpu().numpy())
+                    #print("New option: ", option)
+
+                #print("action: ", action)
+
+                episode_reward += reward
+                rewards.append(reward)
+
+                t += 1
+                state = observation
+                if terminated or truncated:
+                    break
+            #print("Episode: ", episode)
+            #print("Episode reward: ", episode_reward)
+            #print("Episode length: ", t)
+            total_rewards_v.append(episode_reward)
+            if episode % 10 == 0: print("Action probs: ", action_probs, " Option Probs: ", option_probs, " Mean reward last 10: ", np.mean(total_rewards_v[-10:]))
+
+        self.env.close()
+
+        return total_rewards_v
+
+
 if __name__ == "__main__":
-    env_name = "Acrobot-v1"
+    env_name = "CartPole-v1"
     # env_name = "ALE/Assault-ram-v5"
     env = gym.make(env_name)
-    model = OptionCritic(env, seed=25, T=4, input_scale=1, num_options=4, epsilon=0.2)
+    model = OptionCritic(env, seed=25, T=4, input_scale=1, num_options=4)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
-    model.train(100, 1000)
+    num_epsides = 1000
+    results = model.train(num_epsides, 2000000)
+
+    #plot results
+    plt.plot(range(num_epsides),results)
+    plt.show()
+
+    smoothed_results = []
+    window = 25
+    smoothed_results = [np.mean(results[max(0, i-window):min(len(results) - 1,i+window)]) for i in range(len(results))]
+    plt.plot(range(num_epsides), smoothed_results)
+    plt.title("Smoothed results")
+    plt.show()
 
     new_env = gym.make(model.env.spec.id, render_mode='human')
     model.env.close()
     model.env = new_env
-    model.do_episode(1000, 2000)
-    model.do_episode(1000, 2000)
-    model.do_episode(1000, 2000)
-    model.do_episode(1000, 2000)
-    model.do_episode(1000, 2000)
+    model.do_episode(1, 2000000)
+
 
