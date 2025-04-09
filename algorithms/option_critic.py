@@ -16,14 +16,13 @@ import ale_py
 gym.register_envs(ale_py)
 
 class OptionCritic:
-    def __init__(self, env: gym.Env, lr: float, lr_v: float, gamma: float = 1, T=0.1, T_decay=None, device='cpu', 
-                 seed: int = 23, input_scale=1.0, num_options=4, epsilon=0.1, alpha_critic =0.1, alpha_option=0.1,
+    def __init__(self, env: gym.Env, lr: float = 0.001, gamma: float = 1, T=0.1, T_decay=None, device='cpu', 
+                 seed: int = 23, input_scale=1.0, num_options=4, epsilon=0.001, alpha_critic =0.0001, alpha_option=0.00001,
                  alpha_termination=0.1):
         self.env = env
-        self.lr = lr
-        self.lr_v = lr_v
         self.seed = seed
         self.device = device
+        self.lr = lr
         self.seed_model(seed)
         self.gamma = gamma  # TODO
         self.T = T
@@ -148,7 +147,7 @@ class OptionCritic:
     # TODO: Implement according to g_t^1 of the paper
     def Q_swa(self, reward, state_encoding, option):
 
-        with torch.no_grad():
+        
             Qw = self.Q_state_opts.forward(state_encoding)
             Qw_this = Qw[option]
             Qw_best = Qw.max()
@@ -156,7 +155,7 @@ class OptionCritic:
             termination_prob = self.termination_policies[option].forward(state_encoding)
 
             result = reward + self.gamma*(1 - termination_prob) * Qw_this + self.gamma * termination_prob * Qw_best
-            return result.detach().cpu().numpy()
+            return result
 
     def train(self, num_episodes: int, episode_len: int, plot_results=False, use_buffer = True, replay =1000000, batch_size = 16):
         # Collect episode
@@ -194,7 +193,10 @@ class OptionCritic:
 
                 # Choose action according to option policy
                 action_probs = self.option_policies[option].forward(state_encoding)
+                #print("Action probs before softmax: ", action_probs)
                 action_probs = torch.nn.functional.softmax(action_probs, dim=0)
+                action_probs = (1 - self.epsilon) * action_probs + (self.epsilon / len(self.actions)) 
+                #print("Action probs: ", action_probs)
 
                 action = np.random.choice(self.actions, p=action_probs.detach().cpu().numpy())
 
@@ -214,10 +216,11 @@ class OptionCritic:
                 #TODO QU(swa) ← QU(swa) + α * δ
                 QU_swa = QU_swa + self.alpha_critic * delta
 
+
                 #TODO Options improvements
                 log_prob = torch.log(action_probs[action])
                 self.optimizer.zero_grad()
-                option_loss = - self.alpha_option * torch.from_numpy(QU_swa) * log_prob
+                option_loss = - self.alpha_option * QU_swa * log_prob
                 #print("OPTION LOSS: ", option_loss)
                 option_loss.backward(retain_graph=True)
                 self.optimizer.step()
@@ -237,14 +240,17 @@ class OptionCritic:
                     advantage = value - new_value[option]
                     advantage = advantage.item()
 
-                termination_loss = self.alpha_termination * advantage * termination_prob
+                termination_loss = - self.alpha_termination * advantage * torch.log(termination_prob + 1e-6)
                 self.optimizer.zero_grad()
                 #print("TERMINATION LOSS: ", termination_loss)
                 termination_loss.backward()
                 self.optimizer.step()
 
+                
+                #TODO Critic improvements
+                # I think just classic Q-learning is good here
                 # Replay buffer
-                if use_buffer:
+                if replay:
                     D.append((state, option, reward, observation, terminated or truncated))
                     if len(D) > replay:
                         #D.pop(0)
@@ -265,11 +271,23 @@ class OptionCritic:
                     batch = [(state, option, reward, observation, terminated or truncated)]
                 #print("Batch: ", len(batch))
                 self.update_Q(batch)
+                
+
+                #TODO If option policy terminates, choose new option
+                if np.random.rand() < termination_prob.item():
+                    with torch.no_grad():
+                        option_probs = self.Q_state_opts.forward(new_state_encoding)
+                        best_action = torch.argmax(option_probs).item()
+                        opts = np.ones(self.num_options) * self.epsilon / self.num_options
+                        opts[best_action] = 1 - self.epsilon + self.epsilon / self.num_options
+                        option = np.random.choice(self.num_options, p=opts)
+                    #print("New option: ", option)
+
+                #print("action: ", action)
 
 
 
-                #TODO Critic improvements
-                # I think just classic Q-learning is good here
+
                 episode_reward += reward
                 rewards.append(reward)
 
@@ -287,12 +305,12 @@ class OptionCritic:
 
 
 if __name__ == "__main__":
-    env_name = "ALE/Assault-ram-v5"
+    env_name = "Acrobot-v1"
     # env_name = "ALE/Assault-ram-v5"
     env = gym.make(env_name)
-    model = OptionCritic(env, lr=0.003, lr_v=0.003, seed=25, T=4, input_scale=1)
+    model = OptionCritic(env, seed=25, T=4, input_scale=1, num_options=4, epsilon=0.2)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
-    model.train(100, 2000)
+    model.train(100, 1000)
 
     new_env = gym.make(model.env.spec.id, render_mode='human')
     model.env.close()
