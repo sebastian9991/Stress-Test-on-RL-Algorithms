@@ -1,4 +1,5 @@
 
+from pdb import run
 import numpy as np
 import gymnasium as gym
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ import ale_py
 gym.register_envs(ale_py)
 
 class OptionCritic:
-    def __init__(self, env: gym.Env, lr: float = 0.001, gamma: float = 1, T=0.1, T_decay=None, device='cpu', 
+    def __init__(self, env: gym.Env, lr: float = 0.001, gamma: float = 0.99, T=2, T_decay=None, device='cpu', 
                  seed: int = 23, input_scale=1.0, num_options=2, epsilon=0.1, alpha_critic =0.0001, alpha_option=0.001,
                  alpha_termination=0.0001):
         self.env = env
@@ -41,8 +42,10 @@ class OptionCritic:
         self.backbone = torch.nn.Sequential(
             torch.nn.Linear(self.observation_size, 256),
             torch.nn.ReLU(),
-            torch.nn.Linear(256, 64),
-            torch.nn.ReLU())
+            torch.nn.LayerNorm(256),
+            torch.nn.Linear(256, 128),
+            torch.nn.ReLU(),)
+
 
         # From state to picking an action, deciding to stop an option
         self.option_policies = torch.nn.ModuleList()
@@ -50,11 +53,15 @@ class OptionCritic:
         for i in range(num_options):
             self.option_policies.append(
                 torch.nn.Sequential(
+                    torch.nn.Linear(128, 64),
+                    torch.nn.ReLU(),
                     torch.nn.Linear(64, env.action_space.n)
                 )
             )
             self.termination_policies.append(
                 torch.nn.Sequential(
+                    torch.nn.Linear(128, 64),
+                    torch.nn.ReLU(),
                     torch.nn.Linear(64, 1),
                     torch.nn.Sigmoid()
                 )
@@ -64,6 +71,8 @@ class OptionCritic:
 
         # From state to the value of each option
         self.Q_state_opts = torch.nn.Sequential(
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
             torch.nn.Linear(64, num_options)
         )
         self.Q_state_opts.to(device)
@@ -73,7 +82,7 @@ class OptionCritic:
             self.parameters_to_optimize += list(self.option_policies[i].parameters())
             self.parameters_to_optimize += list(self.termination_policies[i].parameters())
 
-        self.optimizer = torch.optim.Adam(self.parameters_to_optimize, lr=self.lr)
+        self.optimizer = torch.optim.AdamW(self.parameters_to_optimize, lr=self.lr)
 
         self.reinit_weights()
 
@@ -163,7 +172,7 @@ class OptionCritic:
         Returns:
             action_probs: epsilon soft distribution over actions
         """
-        action_probs = torch.nn.functional.softmax(action_logits, dim=0)
+        action_probs = torch.nn.functional.softmax(action_logits/self.T, dim=0)
         #print("Action probs after softmax, before softening: ", action_probs)
         # Make epsilon soft
         soft_probs = (1 - self.epsilon) * action_probs + (self.epsilon / len(action_logits)) 
@@ -304,6 +313,8 @@ class OptionCritic:
                     else:
                         current_state_value_target = reward
                     current_state_value_target = torch.tensor(current_state_value_target)
+                    #print("Current state value target: ", current_state_value_target, "Estimate", self.Q_state_opts.forward(state_encoding)[option])
+
 
                 # Update the Q function
                 self.optimizer.zero_grad()
@@ -327,7 +338,8 @@ class OptionCritic:
                 with torch.no_grad():
                     baseline = torch.sum(self.Q_state_opts(state_encoding) * self.epsilon_soft_policy(self.Q_state_opts(state_encoding)))
                     advantage = current_state_value_target - baseline
-                    #print("Option advantage", advantage)
+                    option_policy_advantage = advantage.item()
+                    #print("Option advantage", option_policy_advantage, baseline, current_state_value_target)
 
 
                 log_prob = torch.log(action_probs[action] + 1e-6)
@@ -355,7 +367,7 @@ class OptionCritic:
                     #print("Termination advantage", advantage)
 
                 self.optimizer.zero_grad()
-                termination_loss = - self.alpha_termination * advantage * termination_prob # TODO IS THIS CORRECT??? +/-?
+                termination_loss = -self.alpha_termination * advantage * termination_prob # TODO IS THIS CORRECT??? +/-?
                 #print("Loss: ", termination_loss, " Advantage: ", advantage, " Termination prob: ", termination_prob)
                 #print("TERMINATION LOSS: ", termination_loss)
                 termination_loss.backward()
@@ -381,24 +393,51 @@ class OptionCritic:
                 state = observation
                 if terminated or truncated:
                     break
+            if episode % 10 == 0: 
+                print("Action probs: ", action_logits, " Option Probs: ", new_option_values, " Mean reward last 10: ", 
+                      np.mean(total_rewards_v[-10:]), " Advantages(opt, term): ", option_policy_advantage,advantage, 
+                      "State value: ", current_state_value_target)
+
             #print("Episode: ", episode)
             #print("Episode reward: ", episode_reward)
             #print("Episode length: ", t)
             total_rewards_v.append(episode_reward)
-            if episode % 10 == 0: print("Action probs: ", action_probs, " Option Probs: ", option_probs, " Mean reward last 10: ", np.mean(total_rewards_v[-10:]))
 
         self.env.close()
 
         return total_rewards_v
 
+def run_hyperparam_search(env: gym.Env, num_episodes: int, episode_len: int, plot_results=False):
+    # Hyperparameter search
+    results = {}
+    for lr in [0.1,0.01,0.001]:
+        for alpha in [0.1,0.01,0.001]:
+            for num_options in [2,4,8]:
+                model = OptionCritic(env, lr=lr, alpha_critic =alpha, alpha_option=alpha,
+                 alpha_termination=alpha, num_options=num_options)
+                temp_results = model.train(num_episodes, episode_len)
+                if plot_results:
+                    plt.plot(range(num_episodes),temp_results)
+                    plt.title(f"lr: {lr}, alpha: {alpha}, num_options: {num_options}")
+                    plt.show()
+                results[f"lr{lr}_a{alpha}_opt{num_options}"] = temp_results
+    return results
+
 
 if __name__ == "__main__":
     env_name = "CartPole-v1"
+    #env_name = "Acrobot-v1"
     # env_name = "ALE/Assault-ram-v5"
     env = gym.make(env_name)
-    model = OptionCritic(env, seed=25, T=4, input_scale=1, num_options=4)
+
+    #results = run_hyperparam_search(env, 100, 2000000, plot_results=True)
+    # save results to json
+    #import json
+    #with open("results.json", "w") as f:
+        #json.dump(results, f)
+    model = OptionCritic(env, seed=25, T=4, input_scale=1, num_options=2, lr = 0.00005, alpha_critic =0.001, alpha_option=0.1, alpha_termination=0.1)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
-    num_epsides = 1000
+    num_epsides = 2000
     results = model.train(num_epsides, 2000000)
 
     #plot results
