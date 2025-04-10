@@ -7,6 +7,7 @@ from tqdm import tqdm
 # Save results dict as a json file
 import json
 from itertools import product
+from plot_runs import plot_runs, plot_rewards_over_time, plot_rewards_over_time_files
 
 
 VALID_MODELS = ['OptionCritic']

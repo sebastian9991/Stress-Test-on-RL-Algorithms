@@ -1,23 +1,113 @@
 from gettext import find
+from typing import OrderedDict
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+from itertools import product
 
-def plot_runs(files: list[str], hyperparams: dict[str, list], k = 5, save = True, show = False):
-    """ Plot the runs from several json files"""
 
+def plot_runs(files: list[str], hyperparams: dict[str, list] = None, k = 5, save = True, show = False):
+    """ Plot the runs from several json files
+    Args:
+        files (list): A list of json files to plot.
+        hyperparams (dict): A dictionary of hyperparameters and their values. MUST be the same as what was used to generate the json files.
+            Include hyperparams to plot the performance as a function of the hyperparameters.
+        k (int): The number of top performers to plot.
+        save (bool): Whether to save the plot.
+        show (bool): Whether to show the plot.
+    """
+    ### For each hyperparameter combination, plot the performance over time ###
     plot_rewards_over_time_files(files, show=show, save=save)
 
-
-
     ### For each hyperparameter, plot the performance in the last 100 episodes as a function of the hyperparameter values ###
+    if hyperparams is not None:
+        plot_hyperparam_performance(files, hyperparams, show=show, save=save)
 
-
-    ### For the top 5 hyperparameter combinations (as defined as the highest average reward over the last 100 episodes), plot the performance over time ###
+    ### For the top k hyperparameter combinations (as defined as the highest average reward over the last 100 episodes), plot the performance over time ###
     plot_top_k_rewards_over_time(files, k=k, show=show, save=save)
 
 
     
+def plot_hyperparam_performance(files: list[str], hyperparams: dict[str, list], show: bool = True, save: bool = False) -> None:
+    """ Plot the performance of models as a function of each hyperparameter.
+    Args:
+        files (list): A list of json files to plot.
+        hyperparams (dict): A dictionary of hyperparameters and their values. MUST be the same as what was used to generate the json files.
+        show (bool): Whether to show the plot.
+        save (bool): Whether to save the plot.
+    """
+    ordered_hyperparams = OrderedDict(hyperparams)
+    counter = 0
+    for file in files:
+        rewards = load_rewards(file)
+        num_plots = len(ordered_hyperparams)
+        fig, axs = plt.subplots(num_plots // 2,2, figsize=(7,10))
+        fig.suptitle(f"Performance as a function of hyperparameters for {file[:-5]}")
+        
+        # For each hyperparameter, make a new plot
+        for plot_num, hyperparam in enumerate(hyperparams):
+
+            # Ticks of the x axis
+            values = sorted(hyperparams[hyperparam])
+
+            # Where to insert back in the value for reading dict
+            location = list(ordered_hyperparams.keys()).index(hyperparam)
+            #print(location)
+            partial_dict = hyperparams.copy()
+            partial_dict.pop(hyperparam)
+            #print(partial_dict)
+
+
+
+            values_product = list(product(*partial_dict.values()))
+
+            # REMOVE COLOURS IF WANT TO SOLVE BUG
+            num_keys = len(values_product)
+            color_indices = np.linspace(0, 1, num_keys)
+            colors = plt.cm.rainbow(color_indices)
+
+
+            for color_id, combo in enumerate(values_product):
+                partial_hyperparam_set = dict(zip(partial_dict.keys(), combo))
+
+                all_else_fixed = []
+                placed = False # If the hyperparam is the LAST one, this is needed.
+                for value in values:
+                    # Make a new dictionary with the hyperparameter set to the value
+                    hyperparam_dict = partial_hyperparam_set.copy()
+                    result_name = ""
+                    for spot, key in enumerate(hyperparam_dict.keys()):
+                        if spot == location:
+                            result_name += f"{hyperparam}={value},"
+                            result_name += f"{key}={hyperparam_dict[key]},"
+                            placed = True
+                        else:
+                            result_name += f"{key}={hyperparam_dict[key]},"
+                    if not placed:
+                        result_name += f"{hyperparam}={value},"
+                    all_else_fixed.append(result_name)
+                counter += 1
+
+                # For each of those sets, plot the performance of the models as a function of that hyperparameter
+
+                #print(len(rewards[all_else_fixed[0]]), len(rewards[all_else_fixed[0]][0]))
+                performances = np.zeros(len(all_else_fixed))
+                for k, data in enumerate(all_else_fixed):
+                    # Get the average reward over the last 100 episodes
+                    means = np.mean(rewards[data], axis=0)
+                    performances[k] = np.mean(means[-100:])
+                
+                axs[plot_num//2, plot_num % 2].plot(values, performances, color=colors[color_id], )
+                axs[plot_num//2, plot_num % 2].set_title(f"Performance as a function of {hyperparam}")
+                axs[plot_num//2, plot_num % 2].set_xlabel(hyperparam)
+                axs[plot_num//2, plot_num % 2].set_ylabel("Reward")
+        fig.tight_layout(pad=1.2)
+        if save:
+            plt.savefig(f"{file[:-5]}_hyperparam_performance.png")
+        if show:
+            plt.show()
+
+
 def load_rewards(file: list[str]) -> dict[str, list]:
     """ Load the rewards from a json file """
     try:
@@ -28,7 +118,12 @@ def load_rewards(file: list[str]) -> dict[str, list]:
     return rewards
 
 def plot_rewards_over_time_files(files: list[str], show: bool = True, save: bool = False) -> None:
-    """ Plot the rewards over time for each hyperparameter combination in a set of files """
+    """ Plot the rewards over time for each hyperparameter combination in a set of files 
+    Args:
+        files (list): A list of json files to plot.
+        show (bool): Whether to show the plot.
+        save (bool): Whether to save the plot.
+    """
     for file in files:
         rewards = load_rewards(file)
         plot_rewards_over_time(rewards, show=show, save=save, file=file)
@@ -44,7 +139,7 @@ def plot_top_k_rewards_over_time(files: list[str], k: int = 5, show: bool = True
             hyperparams = list(rewards.keys())[i]
             top_k_rewards[hyperparams] = rewards[hyperparams]
         
-        plot_rewards_over_time(top_k_rewards, show=show, save=save, file=file)
+        plot_rewards_over_time(top_k_rewards, show=show, save=save, file= file[:-5]+ "_top_k_rewards.json")
 
 def find_top_k_performers(rewards: dict[str, list], k: int = 5) -> list:
     """ Find the top k performers based on the average reward over the last 100 episodes.
