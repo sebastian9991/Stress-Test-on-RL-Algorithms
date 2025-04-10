@@ -67,9 +67,12 @@ def main():
         model='OptionCritic',
         hyperparams=option_critic_hyperparams,
         independent_trials=3,
-        num_episodes=1000,
+        num_episodes=10,
         envs=['CartPole-v1']
     )
+    
+    plot_runs(files = ['OptionCritic_CartPole-v1_results.json'], hyperparams = option_critic_hyperparams, show = True)
+    
 
 
 if __name__ == "__main__":
