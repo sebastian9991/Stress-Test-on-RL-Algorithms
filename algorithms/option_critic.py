@@ -15,7 +15,7 @@ gym.register_envs(ale_py)
 class OptionCritic:
     def __init__(self, env: gym.Env, lr: float = 0.001, gamma: float = 0.99, T=2, T_decay=None, device='cpu', 
                  seed: int = 23, input_scale=1.0, num_options=2, epsilon=0.1, alpha_critic =0.0001, alpha_option=0.001,
-                 alpha_termination=0.0001):
+                 alpha_termination=0.0001, overall_alpha=None):
         self.env = env
         self.seed = seed
         self.device = device
@@ -30,6 +30,12 @@ class OptionCritic:
         self.alpha_critic = alpha_critic
         self.alpha_option = alpha_option
         self.alpha_termination = alpha_termination
+
+        # Set all alphas to same value
+        if overall_alpha is not None:
+            self.alpha_option = overall_alpha
+            self.alpha_termination = overall_alpha
+            self.alpha_critic = overall_alpha
 
         # We have 1d observations for this assignment, but adding more for more general case
         self.observation_size = 1
