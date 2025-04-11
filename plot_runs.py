@@ -1,12 +1,12 @@
-from gettext import find
 from typing import OrderedDict
 import matplotlib.pyplot as plt
 import json
 import numpy as np
 from itertools import product
+from scipy import stats
 
 
-def plot_runs(files: list[str], hyperparams: dict[str, list] = None, k = 5, save = True, show = False):
+def plot_runs(files: list[str], hyperparams: dict[str, list] = None, k = 5, save = True, show = False, average_over = 50) -> None:
     """ Plot the runs from several json files
     Args:
         files (list): A list of json files to plot.
@@ -17,14 +17,14 @@ def plot_runs(files: list[str], hyperparams: dict[str, list] = None, k = 5, save
         show (bool): Whether to show the plot.
     """
     ### For each hyperparameter combination, plot the performance over time ###
-    plot_rewards_over_time_files(files, show=show, save=save)
+    plot_rewards_over_time_files(files, show=show, save=save, average_over=average_over)
 
     ### For each hyperparameter, plot the performance in the last 100 episodes as a function of the hyperparameter values ###
     if hyperparams is not None:
         plot_hyperparam_performance(files, hyperparams, show=show, save=save)
 
     ### For the top k hyperparameter combinations (as defined as the highest average reward over the last 100 episodes), plot the performance over time ###
-    plot_top_k_rewards_over_time(files, k=k, show=show, save=save)
+    plot_top_k_rewards_over_time(files, k=k, show=show, save=save, average_over=average_over)
 
 
     
@@ -42,7 +42,7 @@ def plot_hyperparam_performance(files: list[str], hyperparams: dict[str, list], 
         rewards = load_rewards(file)
         num_plots = len(ordered_hyperparams)
         fig, axs = plt.subplots(num_plots // 2,2, figsize=(7,10))
-        fig.suptitle(f"Performance as a function of hyperparameters for {file[:-5]}")
+        fig.suptitle(f"Performance as a function of hyperparameters for \n{file[:-5]}")
         
         # For each hyperparameter, make a new plot
         for plot_num, hyperparam in enumerate(hyperparams):
@@ -94,13 +94,20 @@ def plot_hyperparam_performance(files: list[str], hyperparams: dict[str, list], 
                 performances = np.zeros(len(all_else_fixed))
                 for k, data in enumerate(all_else_fixed):
                     # Get the average reward over the last 100 episodes
-                    means = np.mean(rewards[data], axis=0)
-                    performances[k] = np.mean(means[-100:])
+                    try:
+                        means = np.mean(rewards[data], axis=0)
+                        performances[k] = np.mean(means[-100:])
+                    except:
+                        print(f"Data missing for {hyperparam}. Data not found for {data}")
+                        performances[k] = None
                 
                 axs[plot_num//2, plot_num % 2].plot(values, performances, color=colors[color_id], )
-                axs[plot_num//2, plot_num % 2].set_title(f"Performance as a function of {hyperparam}")
+                axs[plot_num//2, plot_num % 2].set_title(f"Performance as a function of {hyperparam}", fontsize=8)
                 axs[plot_num//2, plot_num % 2].set_xlabel(hyperparam)
                 axs[plot_num//2, plot_num % 2].set_ylabel("Reward")
+                axs[plot_num//2, plot_num % 2].set_xticks(values)
+                if stats.linregress(values, range(0, len(values)))[2] < 0.5:
+                    axs[plot_num//2, plot_num % 2].set_xscale('log')
         fig.tight_layout(pad=1.2)
         if save:
             plt.savefig(f"{file[:-5]}_hyperparam_performance.png")
@@ -109,7 +116,11 @@ def plot_hyperparam_performance(files: list[str], hyperparams: dict[str, list], 
 
 
 def load_rewards(file: list[str]) -> dict[str, list]:
-    """ Load the rewards from a json file """
+    """ Load the rewards from a json file 
+    Args:
+        file (str): The name of the json file to load.
+    Returns:
+        rewards (dict): A dictionary of rewards for each hyperparameter combination."""
     try:
         with open(file) as f:
             rewards = json.load(f)
@@ -117,20 +128,28 @@ def load_rewards(file: list[str]) -> dict[str, list]:
         print(f"{file} not found")
     return rewards
 
-def plot_rewards_over_time_files(files: list[str], show: bool = True, save: bool = False) -> None:
+def plot_rewards_over_time_files(files: list[str], show: bool = True, save: bool = False, average_over = 50,) -> None:
     """ Plot the rewards over time for each hyperparameter combination in a set of files 
     Args:
         files (list): A list of json files to plot.
         show (bool): Whether to show the plot.
         save (bool): Whether to save the plot.
+        average_over (int): The number of episodes to average over for the moving average plot.
     """
     for file in files:
         rewards = load_rewards(file)
-        plot_rewards_over_time(rewards, show=show, save=save, file=file)
+        plot_rewards_over_time(rewards, show=show, save=save, average_over=average_over, file=file)
 
-def plot_top_k_rewards_over_time(files: list[str], k: int = 5, show: bool = True, save: bool = False) -> None:
+def plot_top_k_rewards_over_time(files: list[str], k: int = 5, show: bool = True, save: bool = False, average_over = 50,) -> None:
     """ Plot the rewards over time for the top k hyperparameter combinations in a set of files. We define the top
-     k hyperparameter combinations as the ones with the highest average reward over the last 100 episodes. """
+     k hyperparameter combinations as the ones with the highest average reward over the last 100 episodes. "
+     Args:
+        files (list): A list of json files to plot.
+        k (int): The number of top performers to plot.
+        show (bool): Whether to show the plot.
+        save (bool): Whether to save the plot.
+        average_over (int): The number of episodes to average over for the moving average plot.
+    """
     for file in files:
         rewards = load_rewards(file)
         top_k_performers = find_top_k_performers(rewards, k=k)
@@ -139,7 +158,7 @@ def plot_top_k_rewards_over_time(files: list[str], k: int = 5, show: bool = True
             hyperparams = list(rewards.keys())[i]
             top_k_rewards[hyperparams] = rewards[hyperparams]
         
-        plot_rewards_over_time(top_k_rewards, show=show, save=save, file= file[:-5]+ "_top_k_rewards.json")
+        plot_rewards_over_time(top_k_rewards, show=show, save=save, average_over = average_over, file= file[:-5]+ "_top_k_rewards.json")
 
 def find_top_k_performers(rewards: dict[str, list], k: int = 5) -> list:
     """ Find the top k performers based on the average reward over the last 100 episodes.
@@ -163,16 +182,21 @@ def find_top_k_performers(rewards: dict[str, list], k: int = 5) -> list:
 
     return top_k_performers
 
-def plot_rewards_over_time(rewards: dict[str, list], show: bool = True, save: bool = False, file: str = "rewards.json") -> None:
+def plot_rewards_over_time(rewards: dict[str, list], show: bool = True, save: bool = False, average_over = 50, file: str = "rewards.json") -> None:
     """ Plot the rewards over time for each hyperparameter combination.
     Args:
         rewards (dict): A dictionary of rewards for each hyperparameter combination.
         show (bool): Whether to show the plot.
         save (bool): Whether to save the plot.
+        average_over (int): The number of episodes to average over for the moving average plot.
         file (str): The name of the file to save the plot to.
     """
     
     fig, axs = plt.subplots(2,2, figsize=(10,7))
+    fig.suptitle(f"Performance over time for \n{file[:-5]}")
+    
+    # Divide by 2 since the window goes before and after the current episode
+    average_over = average_over // 2
 
     # Set up the colours
     keys = list(rewards.keys())
@@ -207,7 +231,6 @@ def plot_rewards_over_time(rewards: dict[str, list], show: bool = True, save: bo
         #Plot the moving average
         moving_average = []
         avg_std_dev = []
-        average_over = 20
         for j in range(len(means)):
             moving_average.append(np.mean(means[max(0,j-average_over):min(len(means),j+average_over)]))
             avg_std_dev.append(np.mean(stds[max(0,j-average_over):min(len(means),j+average_over)]))
