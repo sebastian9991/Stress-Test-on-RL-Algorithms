@@ -106,8 +106,10 @@ def plot_hyperparam_performance(files: list[str], hyperparams: dict[str, list], 
                 axs[plot_num//2, plot_num % 2].set_xlabel(hyperparam)
                 axs[plot_num//2, plot_num % 2].set_ylabel("Reward")
                 axs[plot_num//2, plot_num % 2].set_xticks(values)
-                if stats.linregress(values, range(0, len(values)))[2] < 0.5:
-                    axs[plot_num//2, plot_num % 2].set_xscale('log')
+                if len(set(values)) > 1:
+                    lr = stats.linregress(values, range(0, len(values)))
+                    if lr.rvalue < 0.5:
+                        axs[plot_num//2, plot_num % 2].set_xscale('log')
         fig.tight_layout(pad=1.2)
         if save:
             plt.savefig(f"{file[:-5]}_hyperparam_performance.png")
@@ -172,7 +174,7 @@ def find_top_k_performers(rewards: dict[str, list], k: int = 5) -> list:
     for i, hyperparams in enumerate(rewards):
         means = np.mean(rewards[hyperparams], axis=0)
         avg_rewards[i] = np.mean(means[-100:])
-    print(avg_rewards)
+    #print(avg_rewards)
 
     # Sort the hyperparameters by average reward
     sorted_hyperparams = np.argsort(-avg_rewards)
