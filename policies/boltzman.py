@@ -5,7 +5,7 @@ from policy import Policy
 
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=256):
+    def __init__(self, input_dim: int, output_dim: int, hidden_dim=256):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, output_dim)
@@ -24,11 +24,11 @@ class MLP(nn.Module):
 class BoltzmannPolicy(Policy):
     def __init__(
         self,
-        state_dim,
-        action_dim,
-        initial_temperature,
-        min_temperature=0.1,
-        decay_steps=1000,
+        state_dim: int,
+        action_dim: int,
+        initial_temperature: float,
+        min_temperature: float = 0.1,
+        decay_steps: int = 1000,
     ):
         self.policy_net = MLP(state_dim, action_dim)
         self.temperature = initial_temperature
@@ -40,7 +40,7 @@ class BoltzmannPolicy(Policy):
             total_iters=decay_steps,
         )
 
-    def select_action(self, state):
+    def select_action(self, state: int):
         logits = self.policy_net(torch.tensor(state, dtype=torch.float32))
         prob = torch.softmax(logits / self.temperature, dim=-1)
         action = torch.multinomial(prob, num_samples=1).item()
