@@ -1,7 +1,7 @@
 [project]
 name = "stress-test-rl"
 version = "0.1.0"
-description = "Add your description here"
+description = "Stress tests on RL algos under ALE env."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
