@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 import torch.nn as nn
 from policy import Policy
@@ -35,3 +37,16 @@ class PolicyNetwork(Policy):
         prob = torch.softmax(logits, dim=-1)
         action = torch.multinomial(prob, num_samples=1).item()
         return action, prob[action]
+
+    def get_probabilites(self, state: int):
+        logits = self.policy_net(torch.tensor(state, dtype=torch.float32))
+        prob = torch.softmax(logits, dim=-1)
+        return prob
+
+    def get_probabilites_states(self, states: List[int]):
+        return [
+            torch.softmax(
+                self.policy_net(torch.tensor(state, dtype=torch.float32)), dim=-1
+            )
+            for state in states
+        ]
