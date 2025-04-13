@@ -20,12 +20,12 @@ def kl_div_categorical(mu_old, mu_new, eps=1e-8):
     mu_old = mu_old / mu_old.sum(dim = -1, keepdim = True)
     mu_new = mu_new / mu_new.sum(dim=-1, keepdim = True)
 
-    kl = torch.sum(mu_old *(torch.log(mu_old) - torch.log(mu_new)), dim=-1)
+    kl = torch.sum(mu_old *(torch.log(mu_old) - torch.log(mu_new)), dim=-1).mean()
     return kl
 
 
 
-def conjugate_gradient(A, b, delta = 0., max_iterations = 10):
+def conjugate_gradient(A, b, delta = 1e-10, max_iterations = 10):
     #A*x = b return using conjugate gradient method
     #Paper recommended max_iters = 10
     x = torch.zeros_like(b)
@@ -41,7 +41,8 @@ def conjugate_gradient(A, b, delta = 0., max_iterations = 10):
 
         x_new = x + alpha * p
 
-        if (x - x_new).norm <= delta:
+
+        if (x - x_new).norm() <= delta:
             return x_new
 
         i += 1

@@ -2,7 +2,8 @@ from typing import List
 
 import torch
 import torch.nn as nn
-from policy import Policy
+
+from policies.policy import Policy
 
 
 class MLP(nn.Module):
@@ -27,7 +28,7 @@ class PolicyNetwork(Policy):
         self,
         state_dim: int,
         action_dim: int,
-        hidden_dim: int,
+        hidden_dim: int = 256,
     ):
         self.policy_net = MLP(state_dim, action_dim, hidden_dim)
         super().__init__(self.policy_net)
@@ -44,9 +45,11 @@ class PolicyNetwork(Policy):
         return prob
 
     def get_probabilites_states(self, states: List[int]):
-        return [
-            torch.softmax(
-                self.policy_net(torch.tensor(state, dtype=torch.float32)), dim=-1
-            )
-            for state in states
-        ]
+        return torch.stack(
+            [
+                torch.softmax(
+                    self.policy_net(torch.tensor(state, dtype=torch.float32)), dim=-1
+                )
+                for state in states
+            ]
+        )
