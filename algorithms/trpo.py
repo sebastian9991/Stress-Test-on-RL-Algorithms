@@ -31,8 +31,6 @@ class TRPO:
         self.policy = policy
         self.seed = seed
 
-        self.policy_optimizer = optim.Adam(self.policy.policy_net.parameters())
-
     def seed_model(self, seed: int) -> None:
         np.random.seed(seed)
         self.seed = seed
@@ -73,11 +71,11 @@ class TRPO:
         for t in reversed(range(len(states))):
             G = rewards[t] + gamma * G
             q_values.insert(0, G)
-        return q_values
+        return np.asarray(q_values)
 
     def surrogate_loss_state(self, state, state_index, q_values):
         state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-        action_probs = self.policy.policy_net(state)
+        action_probs = self.policy.get_probabilites(state)
         action_probs = action_probs.squeeze(0)
 
         q_values_for_state = torch.tensor(
@@ -87,11 +85,24 @@ class TRPO:
         loss = torch.sum(action_probs * q_values_for_state)
         return loss
 
-    def surrogate_loss(self, states, q_values):
+    def surrogate_loss_1(self, states, q_values):
         total_loss = 0
         for idx, state in enumerate(states):
             total_loss += self.surrogate_loss_state(state, idx, q_values)
         return total_loss / len(states)
+
+    def surrogate_loss(self, states, actions, q_values):
+        states = torch.tensor(states, dtype=torch.float32)
+        actions = torch.tensor(actions, dtype=torch.long)
+        q_values = torch.tensor(q_values, dtype=torch.float32)
+
+        action_probs = self.policy.get_probabilites_states(states)
+        action_log_probs = torch.log(action_probs + 1e-8)
+        idx = actions.unsqueeze(1)
+        selected_log_probs = action_log_probs.gather(1, actions.unsqueeze(1)).squeeze()
+
+        loss = (selected_log_probs * q_values).mean()
+        return loss
 
     def update_policy(self, grad_flatten) -> None:
         n = 0
@@ -101,11 +112,12 @@ class TRPO:
             p.data += g
             n += numel
 
-    def update_agent(self, states, action, rewards, q_values, delta=0.01):
+    def update_agent(self, states, actions, rewards, q_values, delta=0.01):
+        old_probabilites = self.policy.get_probabilites(states).detach()
 
-        L = self.surrogate_loss(states, q_values)
-        probabilities = self.policy.get_probabilites_states(states)
-        KL = kl_div_categorical(probabilities, probabilities)
+        L = self.surrogate_loss(states, actions, q_values)
+        probabilites = self.policy.get_probabilites_states(states)
+        KL = kl_div_categorical(old_probabilites, probabilites)
 
         parameters = list(self.policy.policy_net.parameters())
 
@@ -114,7 +126,8 @@ class TRPO:
 
         # Hessian vector product on KL
         def Hessian_vector_product(v):
-            return flat_grad(d_kl @ v, parameters, retain_graph=True)
+            kl_v = (d_kl * v).sum()
+            return flat_grad(kl_v, parameters, retain_graph=True)
 
         search_dir = conjugate_gradient(Hessian_vector_product, g)
         maximal_step_length = torch.sqrt(
@@ -126,9 +139,9 @@ class TRPO:
             self.update_policy(step)
 
             with torch.no_grad():
-                L_new = self.surrogate_loss(states, q_values)
+                L_new = self.surrogate_loss(states, actions, q_values)
                 probabilites_new = self.policy.get_probabilites_states(states)
-                KL_new = kl_div_categorical(probabilites_new, probabilities)
+                KL_new = kl_div_categorical(probabilites, probabilites_new)
 
             L_improvement = L_new - L
 
@@ -148,9 +161,10 @@ class TRPO:
         for _ in tqdm(range(max_iterations), desc=f"TRPO"):
             states, actions, rewards = self.run_episode(max_episode_length)
             q_values = self.compute_q_values_single_path(states, actions, rewards)
+            q_values = (q_values - q_values.mean()) / (q_values.std() + 1e-8)
             self.update_agent(states, actions, rewards, q_values)
-            mean_rewards = np.mean(rewards)
-            total_rewards.append(mean_rewards)
+            sum_rewards = np.sum(rewards)
+            total_rewards.append(sum_rewards)
 
         return total_rewards
 
@@ -178,12 +192,17 @@ def main() -> None:
         linestyle="--",
     )
     plt.fill_between(
-        episodes, rewards - std_reward, rewards + std_reward, color="green", alpha=0.2
+        episodes,
+        mean_reward - std_reward,
+        mean_reward + std_reward,
+        color="green",
+        alpha=0.2,
     )
     plt.xlabel("Episodes")
     plt.ylabel("Reward")
     plt.legend()
     plt.grid(True)
+    plt.show()
 
 
 if __name__ == "__main__":
