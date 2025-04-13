@@ -35,6 +35,18 @@ class TRPO:
         np.random.seed(seed)
         self.seed = seed
 
+    def get_flat_params(self):
+        """Flatten all parameters into a single vector."""
+        return torch.cat([p.data.view(-1) for p in self.policy.policy_net.parameters()])
+
+    def set_flat_params(self, flat_params) -> None:
+        """Set all parameters from a flattened vector."""
+        idx = 0
+        for p in self.policy.policy_net.parameters():
+            numel = p.numel()
+            p.data.copy_(flat_params[idx : idx + numel].view(p.shape))
+            idx += numel
+
     def run_episode(self, max_episode_length):
         states, actions, rewards = [], [], []
         state = self.env.reset()  # We let s_0 approx p_0 be defined by the env
@@ -136,6 +148,7 @@ class TRPO:
         max_step = maximal_step_length * search_dir
 
         def line_search(step):
+            old_params = self.get_flat_params().clone()
             self.update_policy(step)
 
             with torch.no_grad():
@@ -145,10 +158,16 @@ class TRPO:
 
             L_improvement = L_new - L
 
-            if L_improvement > 0 and KL_new <= delta:
-                return True
+            has_nan = False
+            for param in self.policy.policy_net.parameters():
+                if torch.isnan(param).any() or torch.isinf(param).any():
+                    has_nan = True
+                    break
 
-            self.update_policy(-step)
+            if L_improvement > 0 and KL_new <= delta and (not has_nan):
+                return True #Accept update
+
+            self.set_flat_params(old_params)
             return False
 
         i = 1

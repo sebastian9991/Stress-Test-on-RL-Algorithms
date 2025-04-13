@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from policy import Policy
+from policies.policy import Policy
 
 
 class MLP(nn.Module):
