@@ -9,6 +9,6 @@ class Deterministic(Policy):
     ):
         self.state_dim = state_dim
         self.action_dim = action_dim
-    
-    def select_action(self, advantages):
+
+    def select_action(self):
         pass

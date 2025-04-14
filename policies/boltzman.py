@@ -1,6 +1,8 @@
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
 from policies.policy import Policy
 
 
@@ -24,12 +26,13 @@ class MLP(nn.Module):
 class BoltzmannPolicy(Policy):
     def __init__(
         self,
-        state_dim: int,
-        action_dim: int,
+        env: gym.Env,
         initial_temperature: float,
         min_temperature: float = 0.1,
         decay_steps: int = 1000,
     ):
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.n
         self.policy_net = MLP(state_dim, action_dim)
         self.temperature = initial_temperature
         self.min_temperature = min_temperature

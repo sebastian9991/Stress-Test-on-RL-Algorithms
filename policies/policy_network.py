@@ -1,5 +1,6 @@
 from typing import List
 
+import gymnasium as gym
 import torch
 import torch.nn as nn
 
@@ -26,10 +27,11 @@ class MLP_Xavier(nn.Module):
 class PolicyNetwork(Policy):
     def __init__(
         self,
-        state_dim: int,
-        action_dim: int,
+        env: gym.Env,
         hidden_dim: int = 256,
     ):
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.n
         self.policy_net = MLP_Xavier(state_dim, action_dim, hidden_dim)
         super().__init__(self.policy_net)
 

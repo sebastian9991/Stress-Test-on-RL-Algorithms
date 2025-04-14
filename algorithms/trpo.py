@@ -1,3 +1,4 @@
+import random
 from typing import List
 
 import ale_py
@@ -5,7 +6,6 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.optim as optim
 from tqdm import tqdm
 
 from policies.policy import Policy
@@ -13,27 +13,33 @@ from policies.policy_network import PolicyNetwork
 from utils.helper_gradient import (conjugate_gradient, flat_grad,
                                    kl_div_categorical)
 
+gym.register_envs(ale_py)
+
 
 class TRPO:
     def __init__(
         self,
-        state_dim: int,
-        action_dim: int,
-        delta: float,
-        policy: Policy,
         env: gym.Env,
-        seed: int = 23,
+        policy: Policy,
+        seed: int,
+        delta: float,
     ):
-        self.state_dim = state_dim
-        self.action_dim = action_dim
         self.delta = delta
         self.env = env
         self.policy = policy
         self.seed = seed
 
-    def seed_model(self, seed: int) -> None:
-        np.random.seed(seed)
-        self.seed = seed
+    def seed_model(self, seed):
+        # Set random seeds for reproducibility
+        if seed is not None:
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+        # Initialize environment with seed
+        if seed is not None:
+            self.env.action_space.seed(seed)
+            self.env.observation_space.seed(seed)
 
     def get_flat_params(self):
         """Flatten all parameters into a single vector."""
@@ -165,7 +171,7 @@ class TRPO:
                     break
 
             if L_improvement > 0 and KL_new <= delta and (not has_nan):
-                return True #Accept update
+                return True  # Accept update
 
             self.set_flat_params(old_params)
             return False
@@ -174,11 +180,13 @@ class TRPO:
         while not line_search((0.9**i) * max_step) and i < 10:
             i += 1
 
-    def train(self, max_iterations=1000, max_episode_length=1000) -> List[float]:
+    def train(self, number_of_episodes=1000, max_iterations=1000) -> List[float]:
 
         total_rewards = []
-        for _ in tqdm(range(max_iterations), desc=f"TRPO"):
-            states, actions, rewards = self.run_episode(max_episode_length)
+        for _ in tqdm(range(number_of_episodes), desc="TRPO running..."):
+            states, actions, rewards = self.run_episode(
+                max_episode_length=max_iterations
+            )
             q_values = self.compute_q_values_single_path(states, actions, rewards)
             q_values = (q_values - q_values.mean()) / (q_values.std() + 1e-8)
             self.update_agent(states, actions, rewards, q_values)
@@ -192,12 +200,8 @@ class TRPO:
 def main() -> None:
     env_name = "CartPole-v1"
     env = gym.make(env_name)
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
-    policy = PolicyNetwork(state_dim, action_dim)
-    trpo = TRPO(
-        state_dim=state_dim, action_dim=action_dim, delta=0.01, policy=policy, env=env
-    )
+    policy = PolicyNetwork(env=env)
+    trpo = TRPO(env=env,  seed = 1, policy=policy, delta=0.01)
     rewards = trpo.train()
     episodes = np.arange(len(rewards))
     mean_reward = np.mean(rewards, axis=0)

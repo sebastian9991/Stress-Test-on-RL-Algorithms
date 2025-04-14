@@ -213,8 +213,8 @@ class OptionCritic:
 
     def do_episode(
         self,
-        num_episodes: int,
-        episode_len: int,
+        number_of_episodes: int,
+        max_iterations: int,
         plot_results=False,
         use_buffer=True,
         replay=1000000,
@@ -228,7 +228,7 @@ class OptionCritic:
         self.seed_model(self.seed)
         total_rewards_v = []
 
-        for episode in tqdm(range(num_episodes), leave=False, desc="Episodes"):
+        for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
             state, _ = self.env.reset(
                 seed=self.seed + episode
             )  # ADD epsiode so the seed is different for each episode
@@ -250,7 +250,7 @@ class OptionCritic:
 
             episode_reward = 0
 
-            while t < episode_len:
+            while t < max_iterations:
 
                 ### TAKE ACTION ###
                 # Load the common backbone to get our state encoding
@@ -310,8 +310,8 @@ class OptionCritic:
 
     def train(
         self,
-        num_episodes: int,
-        episode_len: int,
+        number_of_episodes: int,
+        max_iterations: int,
         plot_results=False,
         use_buffer=True,
         replay=1000000,
@@ -325,7 +325,7 @@ class OptionCritic:
         self.seed_model(self.seed)
         total_rewards_v = []
 
-        for episode in tqdm(range(num_episodes), leave=False, desc="Episodes"):
+        for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
             state, _ = self.env.reset(
                 seed=self.seed + episode
             )  # ADD epsiode so the seed is different for each episode
@@ -347,7 +347,7 @@ class OptionCritic:
 
             episode_reward = 0
 
-            while t < episode_len:
+            while t < max_iterations:
 
                 ### TAKE ACTION ###
                 # Load the common backbone to get our state encoding
@@ -516,7 +516,7 @@ class OptionCritic:
 
 
 def run_hyperparam_search(
-    env: gym.Env, num_episodes: int, episode_len: int, plot_results=False
+    env: gym.Env, number_of_episodes: int, max_iterations: int, plot_results=False
 ):
     # Hyperparameter search
     results = {}
@@ -531,9 +531,9 @@ def run_hyperparam_search(
                     alpha_termination=alpha,
                     num_options=num_options,
                 )
-                temp_results = model.train(num_episodes, episode_len)
+                temp_results = model.train(number_of_episodes, max_iterations)
                 if plot_results:
-                    plt.plot(range(num_episodes), temp_results)
+                    plt.plot(range(max_iterations), temp_results)
                     plt.title(f"lr: {lr}, alpha: {alpha}, num_options: {num_options}")
                     plt.show()
                 results[f"lr{lr}_a{alpha}_opt{num_options}"] = temp_results

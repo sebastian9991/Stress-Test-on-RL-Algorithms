@@ -1,3 +1,6 @@
+import random
+
+import ale_py
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,6 +11,8 @@ from tqdm import tqdm
 
 from policies.boltzman import BoltzmannPolicy
 from policies.policy import Policy
+
+gym.register_envs(ale_py)
 
 
 class MLP_Xavier(nn.Module):
@@ -30,26 +35,38 @@ class MLP_Xavier(nn.Module):
 class ActorCritic:
     def __init__(
         self,
-        state_dim: int,
-        action_dim: int,
-        policy: Policy,
         env: gym.Env,
+        policy: Policy,
+        seed: int, 
         temperature_decay: bool,
         alpha_theta: float = 0.001,
         alpha_w: float = 0.001,
         gamma: float = 0.99,
     ):
         self.gamma = gamma
-        self.action_dim = action_dim
+        self.state_dim = env.observation_space.shape[0]
         self.temperature_decay = temperature_decay
         self.env = env
         self.actor = policy
-        self.critic = MLP_Xavier(state_dim, 1)
+        self.seed = seed
+        self.critic = MLP_Xavier(self.state_dim, 1)
         self.actor_optimizer = optim.Adam(
             self.actor.policy_net.parameters(), lr=alpha_theta
         )
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=alpha_w)
         self.I = 1.0
+
+    def seed_model(self, seed):
+        # Set random seeds for reproducibility
+        if seed is not None:
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+        # Initialize environment with seed
+        if seed is not None:
+            self.env.action_space.seed(seed)
+            self.env.observation_space.seed(seed)
 
     def update(self, state, action, reward, next_state, done):
         state_tensor = torch.tensor(state, dtype=torch.float32)
@@ -82,11 +99,10 @@ class ActorCritic:
         # Decay i
         self.I *= self.gamma
 
-    def train(self, max_num_episodes=1000, max_iterations=1000):
+    def train(self, number_of_episodes=1000, max_iterations=1000):
+        self.seed_model(self.seed)
         episode_rewards = []
-        for episode in tqdm(
-            range(max_num_episodes), desc="Actor-Critic running episodes."
-        ):
+        for _ in tqdm(range(number_of_episodes), desc="Actor-Critic running..."):
             self.I = 1.0
             reset_result = self.env.reset()  # s_0
             if isinstance(reset_result, tuple):
@@ -131,15 +147,12 @@ class ActorCritic:
 def main() -> None:
     env_name = "CartPole-v1"
     env = gym.make(env_name)
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
     initial_temperature = 1.0
-    policy = BoltzmannPolicy(state_dim, action_dim, initial_temperature)
+    policy = BoltzmannPolicy(env =env,  initial_temperature=initial_temperature)
     actor_critic = ActorCritic(
-        state_dim=state_dim,
-        action_dim=action_dim,
-        policy=policy,
         env=env,
+        policy=policy,
+        seed = 1,
         temperature_decay=False,
     )
     rewards = actor_critic.train()
