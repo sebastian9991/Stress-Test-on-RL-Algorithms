@@ -1,4 +1,5 @@
 import random
+from typing import Dict
 
 import ale_py
 import gymnasium as gym
@@ -37,8 +38,9 @@ class ActorCritic:
         self,
         env: gym.Env,
         policy: Policy,
-        seed: int, 
+        seed: int,
         temperature_decay: bool,
+        do_stress_test: bool = True,
         alpha_theta: float = 0.001,
         alpha_w: float = 0.001,
         gamma: float = 0.99,
@@ -49,6 +51,7 @@ class ActorCritic:
         self.env = env
         self.actor = policy
         self.seed = seed
+        self.do_stress_test = do_stress_test
         self.critic = MLP_Xavier(self.state_dim, 1)
         self.actor_optimizer = optim.Adam(
             self.actor.policy_net.parameters(), lr=alpha_theta
@@ -99,11 +102,13 @@ class ActorCritic:
         # Decay i
         self.I *= self.gamma
 
-    def train(self, number_of_episodes=1000, max_iterations=1000):
+    def train(self, stress_config: Dict, number_of_episodes=1000, max_iterations=1000):
         self.seed_model(self.seed)
         episode_rewards = []
-        for _ in tqdm(range(number_of_episodes), desc="Actor-Critic running..."):
+        for eps in tqdm(range(number_of_episodes), desc="Actor-Critic running..."):
             self.I = 1.0
+            if self.stress_test and (eps == 100 or eps == 500):
+                self.env.stress_test(gravity_increment=0.5, length_increment=2.0)
             reset_result = self.env.reset()  # s_0
             if isinstance(reset_result, tuple):
                 state = reset_result[0]  # Extract state from (state, info) tuple
@@ -148,11 +153,11 @@ def main() -> None:
     env_name = "CartPole-v1"
     env = gym.make(env_name)
     initial_temperature = 1.0
-    policy = BoltzmannPolicy(env =env,  initial_temperature=initial_temperature)
+    policy = BoltzmannPolicy(env=env, initial_temperature=initial_temperature)
     actor_critic = ActorCritic(
         env=env,
         policy=policy,
-        seed = 1,
+        seed=1,
         temperature_decay=False,
     )
     rewards = actor_critic.train()

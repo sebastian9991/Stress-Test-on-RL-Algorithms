@@ -1,5 +1,5 @@
 import random
-from typing import List
+from typing import Dict, List
 
 import ale_py
 import gymnasium as gym
@@ -22,12 +22,14 @@ class TRPO:
         env: gym.Env,
         policy: Policy,
         seed: int,
-        delta: float,
+        do_stress_test: bool = True,
+        delta: float = 0.01,
     ):
         self.delta = delta
         self.env = env
         self.policy = policy
         self.seed = seed
+        self.do_stress_test = do_stress_test
 
     def seed_model(self, seed):
         # Set random seeds for reproducibility
@@ -180,10 +182,15 @@ class TRPO:
         while not line_search((0.9**i) * max_step) and i < 10:
             i += 1
 
-    def train(self, number_of_episodes=1000, max_iterations=1000) -> List[float]:
+    def train(
+        self, stress_config: Dict, number_of_episodes=1000, max_iterations=1000
+    ) -> List[float]:
 
         total_rewards = []
-        for _ in tqdm(range(number_of_episodes), desc="TRPO running..."):
+        for eps in tqdm(range(number_of_episodes), desc="TRPO running..."):
+            if self.do_stress_test and (eps == 5):
+                print(f"Stress Test called at episode: {eps}")
+                self.env.stress_test(**stress_config)
             states, actions, rewards = self.run_episode(
                 max_episode_length=max_iterations
             )
@@ -201,7 +208,7 @@ def main() -> None:
     env_name = "CartPole-v1"
     env = gym.make(env_name)
     policy = PolicyNetwork(env=env)
-    trpo = TRPO(env=env,  seed = 1, policy=policy, delta=0.01)
+    trpo = TRPO(env=env, seed=1, policy=policy, delta=0.01)
     rewards = trpo.train()
     episodes = np.arange(len(rewards))
     mean_reward = np.mean(rewards, axis=0)

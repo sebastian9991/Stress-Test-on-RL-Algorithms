@@ -1,3 +1,5 @@
+from typing import Dict
+
 import ale_py
 import gymnasium as gym
 import matplotlib.pyplot as plt
@@ -8,9 +10,10 @@ gym.register_envs(ale_py)
 
 
 class RandomAgent:
-    def __init__(self, env: gym.Env, seed: int = 23):
+    def __init__(self, env: gym.Env, do_stress_test: bool = True, seed: int = 23):
         self.env: gym.Env = env
         self.seed = seed
+        self.do_stress_test = do_stress_test
         self.actions = range(env.action_space.n)
 
         # We have 1d observations for this assignment, but adding more for more general case
@@ -30,7 +33,12 @@ class RandomAgent:
             self.env.action_space.seed(seed)
             self.env.observation_space.seed(seed)
 
-    def train(self, number_of_episodes: int, max_iterations: int):
+    def train(
+        self,
+        stress_config: Dict,
+        number_of_episodes: int = 1000,
+        max_iterations: int = 1000,
+    ):
         # Collect episode
         # update replay buffer if you have one
         # update the Neural network
@@ -40,6 +48,8 @@ class RandomAgent:
         total_rewards_v = []
 
         for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
+            if self.do_stress_test and (eps == 100 or eps == 500):
+                self.env.stress_test(**stress_config)
             state, _ = self.env.reset(
                 seed=self.seed + episode
             )  # ADD epsiode so the seed is different for each episode
