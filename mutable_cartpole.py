@@ -7,9 +7,8 @@ permalink: https://perma.cc/C9ZM-652R
 import math
 from typing import Optional, Tuple, Union
 
-import numpy as np
-
 import gymnasium as gym
+import numpy as np
 from gymnasium import logger, spaces
 from gymnasium.envs.classic_control import utils
 from gymnasium.error import DependencyNotInstalled
@@ -115,9 +114,14 @@ class CartPoleMutableEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         "render_modes": ["human", "rgb_array"],
         "render_fps": 50,
     }
+
     ## Add arguments here to make attributes mutable ##
     def __init__(
-        self, sutton_barto_reward: bool = False, render_mode: Optional[str] = None, gravity: Optional[float] = 9.8, length: Optional[float] = 0.5
+        self,
+        sutton_barto_reward: bool = False,
+        render_mode: Optional[str] = None,
+        gravity: Optional[float] = 9.8,
+        length: Optional[float] = 0.5,
     ):
         self._sutton_barto_reward = sutton_barto_reward
 
@@ -605,8 +609,8 @@ class CartPoleVectorEnv(VectorEnv):
 
 if __name__ == "__main__":
     # Instantiate the environment with a custom gravity value
-    env = CartPoleMutableEnv(render_mode = 'human', gravity=30, length = 2)
-    
+    env = CartPoleMutableEnv(render_mode="human", gravity=30, length=2)
+
     for episode in range(3):
         observation = env.reset()
         done = False
@@ -616,5 +620,5 @@ if __name__ == "__main__":
             action = env.action_space.sample()
             observation = env.step(action)
         print(f"Episode {episode + 1} complete.")
-    
+
     env.close()
