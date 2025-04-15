@@ -1,7 +1,7 @@
 [project]
 name = "stress-test-rl"
 version = "0.1.0"
-description = "Add your description here"
+description = "Stress tests on RL algos under ALE env."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -9,6 +9,10 @@ dependencies = [
     "gymnasium[classic-control]>=1.1.1",
     "matplotlib>=3.9.4",
     "numpy>=2.0.2",
+    "pyqt6>=6.9.0",
+    "scipy>=1.13.1",
     "torch>=2.6.0",
     "tqdm>=4.67.1",
 ]
+
+
