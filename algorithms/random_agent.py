@@ -1,15 +1,15 @@
-
-import numpy as np
+import ale_py
 import gymnasium as gym
 import matplotlib.pyplot as plt
+import numpy as np
 from tqdm import tqdm
-import gymnasium as gym
-import ale_py
+
 gym.register_envs(ale_py)
+
 
 class RandomAgent:
     def __init__(self, env: gym.Env, seed: int = 23):
-        self.env = env
+        self.env: gym.Env = env
         self.seed = seed
         self.actions = range(env.action_space.n)
 
@@ -20,12 +20,17 @@ class RandomAgent:
 
         self.seed_model(seed)
 
-    def seed_model(self, seed: int) -> None:
-        np.random.seed(seed)
-        self.seed = seed
+    def seed_model(self, seed):
+        # Set random seeds for reproducibility
+        if seed is not None:
+            np.random.seed(seed)
 
+        # Initialize environment with seed
+        if seed is not None:
+            self.env.action_space.seed(seed)
+            self.env.observation_space.seed(seed)
 
-    def train(self, num_episodes: int, episode_len: int):
+    def train(self, number_of_episodes: int, max_iterations: int):
         # Collect episode
         # update replay buffer if you have one
         # update the Neural network
@@ -34,12 +39,13 @@ class RandomAgent:
         self.seed_model(self.seed)
         total_rewards_v = []
 
-        for episode in tqdm(range(num_episodes), leave=False, desc="Episodes"):
+        for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
             state, _ = self.env.reset(
-                seed=self.seed + episode)  # ADD epsiode so the seed is different for each episode
+                seed=self.seed + episode
+            )  # ADD epsiode so the seed is different for each episode
             episode_reward = 0
             t = 0
-            while t < episode_len:
+            while t < max_iterations:
 
                 action = np.random.choice(self.actions)
                 observation, reward, terminated, truncated, info = self.env.step(action)
@@ -49,9 +55,9 @@ class RandomAgent:
                 t += 1
                 if terminated or truncated:
                     break
-            #print("Episode: ", episode)
-            #print("Episode reward: ", episode_reward)
-            #print("Episode length: ", t)
+            # print("Episode: ", episode)
+            # print("Episode reward: ", episode_reward)
+            # print("Episode length: ", t)
             total_rewards_v.append(episode_reward)
 
         self.env.close()
@@ -59,29 +65,31 @@ class RandomAgent:
         return total_rewards_v
 
 
+# For testing purposes
 if __name__ == "__main__":
     env_name = "CartPole-v1"
-    #env_name = "ALE/Assault-ram-v5"
+    # env_name = "ALE/Assault-ram-v5"
     env = gym.make(env_name)
     model = RandomAgent(env, seed=25)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
     num_epsides = 1000
     results = model.train(num_epsides, 2000000)
 
-    #plot results
-    plt.plot(range(num_epsides),results)
+    # plot results
+    plt.plot(range(num_epsides), results)
     plt.show()
 
     smoothed_results = []
     window = 25
-    smoothed_results = [np.mean(results[max(0, i-window):min(len(results) - 1,i+window)]) for i in range(len(results))]
+    smoothed_results = [
+        np.mean(results[max(0, i - window) : min(len(results) - 1, i + window)])
+        for i in range(len(results))
+    ]
     plt.plot(range(num_epsides), smoothed_results)
     plt.title("Smoothed results")
     plt.show()
 
-    new_env = gym.make(model.env.spec.id, render_mode='human')
+    new_env = gym.make(model.env.spec.id, render_mode="human")
     model.env.close()
     model.env = new_env
     model.train(1, 2000000)
-
-
