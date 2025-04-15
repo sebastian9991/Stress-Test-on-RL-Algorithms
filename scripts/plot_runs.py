@@ -27,9 +27,9 @@ def plot_runs(
     ### For each hyperparameter combination, plot the performance over time ###
     plot_rewards_over_time_files(files, show=show, save=save, average_over=average_over)
 
-    ### For each hyperparameter, plot the performance in the last 100 episodes as a function of the hyperparameter values ###
-    if hyperparams is not None:
-        plot_hyperparam_performance(files, hyperparams, show=show, save=save)
+    # ### For each hyperparameter, plot the performance in the last 100 episodes as a function of the hyperparameter values ###
+    # if hyperparams is not None:
+    #     plot_hyperparam_performance(files, hyperparams, show=show, save=save)
 
     ### For the top k hyperparameter combinations (as defined as the highest average reward over the last 100 episodes), plot the performance over time ###
     plot_top_k_rewards_over_time(

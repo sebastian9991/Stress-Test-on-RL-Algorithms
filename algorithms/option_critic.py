@@ -490,20 +490,20 @@ class OptionCritic:
                 state = observation
                 if terminated or truncated:
                     break
-            if episode % 10 == 0:
-                print(
-                    "Action probs: ",
-                    action_logits,
-                    " Option Probs: ",
-                    new_option_values,
-                    " Mean reward last 10: ",
-                    np.mean(total_rewards_v[-10:]),
-                    " Advantages(opt, term): ",
-                    option_policy_advantage,
-                    advantage,
-                    "State value: ",
-                    current_state_value_target,
-                )
+            # if episode % 10 == 0:
+            #     print(
+            #         "Action probs: ",
+            #         action_logits,
+            #         " Option Probs: ",
+            #         new_option_values,
+            #         " Mean reward last 10: ",
+            #         np.mean(total_rewards_v[-10:]),
+            #         " Advantages(opt, term): ",
+            #         option_policy_advantage,
+            #         advantage,
+            #         "State value: ",
+            #         current_state_value_target,
+            #     )
 
             # print("Episode: ", episode)
             # print("Episode reward: ", episode_reward)
