@@ -48,7 +48,7 @@ class RandomAgent:
         total_rewards_v = []
 
         for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
-            if self.do_stress_test and (eps == 100 or eps == 500):
+            if self.do_stress_test and (episode == 100 or episode == 500):
                 self.env.stress_test(**stress_config)
             state, _ = self.env.reset(
                 seed=self.seed + episode
@@ -78,11 +78,12 @@ class RandomAgent:
 # For testing purposes
 if __name__ == "__main__":
     env_name = "CartPole-v1"
-    # env_name = "ALE/Assault-ram-v5"
+    #env_name = "ALE/Assault-ram-v5"
+    env_name = "ALE/Pacman-ram-v5"
     env = gym.make(env_name)
     model = RandomAgent(env, seed=25)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
-    num_epsides = 1000
+    num_epsides = 800
     results = model.train(num_epsides, 2000000)
 
     # plot results
