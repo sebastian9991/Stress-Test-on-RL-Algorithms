@@ -354,6 +354,10 @@ class CartPoleMutableEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             pygame.quit()
             self.isopen = False
 
+    def stress_test(self, gravity_increment, length_increment):
+        self.gravity += gravity_increment
+        self.gravity += length_increment
+
 
 class CartPoleVectorEnv(VectorEnv):
     metadata = {
@@ -605,6 +609,11 @@ class CartPoleVectorEnv(VectorEnv):
             import pygame
 
             pygame.quit()
+    def stress_test(self, gravity_increment, length_increment):
+        self.gravity += gravity_increment
+        self.gravity += length_increment
+
+
 
 
 if __name__ == "__main__":
