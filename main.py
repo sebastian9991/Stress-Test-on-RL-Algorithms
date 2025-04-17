@@ -22,8 +22,8 @@ from scripts.plot_runs import (plot_rewards_over_time,
 VALID_MODELS = ["OptionCritic", "ActorCritic", "TRPO", "RandomAgent"]
 
 option_critic_hyperparams = {
-    "lr": [0.001, 0.0001],
-    "gamma": [0.1, 0.01],
+    "lr": [ 0.001, 0.0001],
+    "gamma": [0.9, 0.99],
     "T": [2],
     "num_options": [2, 4],
     "epsilon": [0.1, 0.2],
