@@ -16,7 +16,7 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
 
-class CartPoleMutableEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
+class MutableCartPoleEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
     """
     ## Description
 
@@ -122,11 +122,12 @@ class CartPoleMutableEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         render_mode: Optional[str] = None,
         gravity: Optional[float] = 9.8,
         length: Optional[float] = 0.5,
+        masscart: Optional[float] = 1.0,
     ):
         self._sutton_barto_reward = sutton_barto_reward
 
         self.gravity = gravity
-        self.masscart = 1.0
+        self.masscart = masscart
         self.masspole = 0.1
         self.total_mass = self.masspole + self.masscart
         self.length = length  # actually half the pole's length
@@ -234,8 +235,18 @@ class CartPoleMutableEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
+        gravity = None,
+        length = None,
+        masscart = None,
     ):
         super().reset(seed=seed)
+        if length is not None:
+            self.length = length
+        if gravity is not None:
+            self.gravity = gravity
+        if masscart is not None:
+            self.masscart = masscart
+            self.total_mass = self.masspole + self.masscart
         # Note that if you use custom reset bounds, it may lead to out-of-bound
         # state/observations.
         low, high = utils.maybe_parse_reset_bounds(
@@ -354,12 +365,9 @@ class CartPoleMutableEnv(gym.Env[np.ndarray, Union[int, np.ndarray]]):
             pygame.quit()
             self.isopen = False
 
-    def stress_test(self, gravity_increment, length_increment):
-        self.gravity += gravity_increment
-        self.gravity += length_increment
 
 
-class CartPoleVectorEnv(VectorEnv):
+class MutableCartPoleVectorEnv(VectorEnv):
     metadata = {
         "render_modes": ["rgb_array"],
         "render_fps": 50,
@@ -372,6 +380,9 @@ class CartPoleVectorEnv(VectorEnv):
         max_episode_steps: int = 500,
         render_mode: Optional[str] = None,
         sutton_barto_reward: bool = False,
+        gravity: Optional[float] = 9.8,
+        length: Optional[float] = 0.5,
+        masscart: Optional[float] = 1.0,
     ):
         self._sutton_barto_reward = sutton_barto_reward
 
@@ -379,11 +390,11 @@ class CartPoleVectorEnv(VectorEnv):
         self.max_episode_steps = max_episode_steps
         self.render_mode = render_mode
 
-        self.gravity = 9.8
-        self.masscart = 1.0
+        self.gravity = gravity
+        self.masscart = masscart
         self.masspole = 0.1
         self.total_mass = self.masspole + self.masscart
-        self.length = 0.5  # actually half the pole's length
+        self.length = length  # actually half the pole's length
         self.polemass_length = self.masspole * self.length
         self.force_mag = 10.0
         self.tau = 0.02  # seconds between state updates
@@ -496,7 +507,17 @@ class CartPoleVectorEnv(VectorEnv):
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
+        length = None,
+        gravity = None,
+        masscart = None,
     ):
+        if length is not None:
+            self.length = length
+        if gravity is not None:
+            self.gravity = gravity
+        if masscart is not None:
+            self.masscart = masscart
+            self.total_mass = self.masspole + self.masscart
         super().reset(seed=seed)
         # Note that if you use custom reset bounds, it may lead to out-of-bound
         # state/observations.
@@ -609,19 +630,16 @@ class CartPoleVectorEnv(VectorEnv):
             import pygame
 
             pygame.quit()
-    def stress_test(self, gravity_increment, length_increment):
-        self.gravity += gravity_increment
-        self.gravity += length_increment
 
 
 
 
 if __name__ == "__main__":
     # Instantiate the environment with a custom gravity value
-    env = CartPoleMutableEnv(render_mode="human", gravity=30, length=2)
+    env = MutableCartPoleEnv(render_mode="human", gravity=0.5, length=2)
 
     for episode in range(3):
-        observation = env.reset()
+        observation = env.reset(length = 3, gravity = 10)
         done = False
         while not done:
             env.render()

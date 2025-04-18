@@ -107,9 +107,10 @@ class ActorCritic:
         episode_rewards = []
         for eps in tqdm(range(number_of_episodes), desc="Actor-Critic running..."):
             self.I = 1.0
-            if self.stress_test and (eps == 100 or eps == 500):
-                self.env.stress_test(gravity_increment=0.5, length_increment=2.0)
-            reset_result = self.env.reset()  # s_0
+            if stress_config is not None and (eps == 500):
+                self.env.reset(**stress_config, seed = self.seed + eps)
+            else:
+                reset_result = self.env.reset(seed = self.seed + eps)  # s_0
             if isinstance(reset_result, tuple):
                 state = reset_result[0]  # Extract state from (state, info) tuple
             else:

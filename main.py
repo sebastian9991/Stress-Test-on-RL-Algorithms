@@ -6,6 +6,7 @@ from unittest import result
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
+from mutable_ale.mutable_ALE import MutableAtariEnv
 import numpy as np
 from tqdm import tqdm
 
@@ -13,7 +14,7 @@ from algorithms.actor_critic import ActorCritic
 from algorithms.option_critic import OptionCritic
 from algorithms.random_agent import RandomAgent
 from algorithms.trpo import TRPO
-from mutable_ale.mutable_cartpole import CartPoleMutableEnv
+from mutable_ale.mutable_cartpole import MutableCartPoleEnv
 from policies.boltzman import BoltzmannPolicy
 from policies.policy_network import PolicyNetwork
 from scripts.plot_runs import (plot_rewards_over_time,
@@ -38,8 +39,12 @@ random_params = {"no_params": [None]}
 ##Stress-Test config
 
 stress_config_cartpole = {
-    "gravity_increment": 0.5,
-    "length_increment": 2,
+    "gravity": 12,
+    "masscart": 0.65,
+}
+
+stress_config_pacman = {
+    "mode": 4,
 }
 
 
@@ -107,7 +112,8 @@ def run_hyperparam_search(
 def main():
     print("Main Experiement ran from here:")
     os.makedirs("results", exist_ok=True)
-    env_cart = {"CartPole-v1": CartPoleMutableEnv()}
+    env_cart = {"CartPole-v1": MutableCartPoleEnv()}
+    env_pacman = {"Pacman-ram-v5": MutableAtariEnv(game = "pacman", obs_type = 'ram')}
 
     # run_hyperparam_search(
     #     model="OptionCritic",
@@ -127,7 +133,7 @@ def main():
         hyperparams=trpo_hyperparams,
         stress_config=stress_config_cartpole,
         independent_trials=3,
-        number_of_episodes=10,
+        number_of_episodes=1000,
         envs=[env_cart],
     )
     plot_runs(
