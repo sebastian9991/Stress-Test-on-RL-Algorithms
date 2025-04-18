@@ -95,7 +95,7 @@ class DQN:
             return torch.argmax(estimates).item()        
 
     def train(self, num_episodes: int, episode_len: int, render = True, use_buffer = False, 
-              replay: int = 1000000, batch_size: int = 16, ) -> None:
+              replay: int = 1000000, batch_size: int = 16,stress_config: dict = None) -> None:
         # Collect episode 
         # update replay buffer if you have one
         # update the Neural network 
@@ -114,8 +114,11 @@ class DQN:
             else:
                 #Don't render the other episodes
                 pass
+            if stress_config is not None and (episode == 500):
+                obeservation, _ = self.env.reset(seed=self.seed + episode, **stress_config)
+            else:
+                observation, _ = self.env.reset(seed=self.seed + episode)
             episode_rewards = []
-            observation, _ = self.env.reset(seed=self.seed + episode) # ADD epsiode so the seed is different for each episode
             #print(type(observation))
             #print(observation.shape)
             t = -1
