@@ -94,7 +94,7 @@ class DQN:
                 estimates = self.Q.forward(torch.from_numpy(observation).float().to(self.device))
             return torch.argmax(estimates).item()        
 
-    def train(self, num_episodes: int, episode_len: int, render = True, use_buffer = False, 
+    def train(self, number_of_episodes: int, max_iterations: int = 1000, render = True, use_buffer = True, 
               replay: int = 1000000, batch_size: int = 16,stress_config: dict = None) -> None:
         # Collect episode 
         # update replay buffer if you have one
@@ -106,23 +106,17 @@ class DQN:
         D = deque(maxlen=replay)
         rewards = []
 
-        for episode in tqdm(range(num_episodes), leave=False, desc="Episodes"):
-            if render and episode == num_episodes - 1:
-                new_env = gym.make(self.env.spec.id, render_mode='human')
-                self.env.close()
-                self.env = new_env
-            else:
-                #Don't render the other episodes
-                pass
+        for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
             if stress_config is not None and (episode == 500):
-                obeservation, _ = self.env.reset(seed=self.seed + episode, **stress_config)
+                observation, _ = self.env.reset(seed=self.seed + episode, **stress_config)
+                print("STRESS TEST BEGUN")
             else:
                 observation, _ = self.env.reset(seed=self.seed + episode)
             episode_rewards = []
             #print(type(observation))
             #print(observation.shape)
             t = -1
-            while t < episode_len:
+            while t < max_iterations:
                 t += 1
                 action = self.select_action(observation)
                 
