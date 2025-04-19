@@ -35,9 +35,9 @@ class RandomAgent:
 
     def train(
         self,
-        stress_config: Dict,
         number_of_episodes: int = 1000,
         max_iterations: int = 1000,
+        stress_config: Dict = None,
     ):
         # Collect episode
         # update replay buffer if you have one
@@ -48,11 +48,15 @@ class RandomAgent:
         total_rewards_v = []
 
         for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
-            if self.do_stress_test and (episode == 100 or episode == 500):
-                self.env.stress_test(**stress_config)
-            state, _ = self.env.reset(
-                seed=self.seed + episode
-            )  # ADD epsiode so the seed is different for each episode
+            if stress_config is not None and (episode == 500):
+                state, _ = self.env.reset(
+                seed=self.seed + episode,
+                **stress_config
+            ) 
+            else:
+                state, _ = self.env.reset(
+                    seed=self.seed + episode
+                )  # ADD epsiode so the seed is different for each episode
             episode_reward = 0
             t = 0
             while t < max_iterations:

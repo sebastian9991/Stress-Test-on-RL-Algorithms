@@ -1,7 +1,7 @@
 import math
 from pdb import run
 
-import ale_py
+import numpy as np
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,7 +9,8 @@ import torch
 import torch.optim.rmsprop
 from torch import nn, softmax
 from tqdm import tqdm
-
+import gymnasium as gym
+import ale_py
 gym.register_envs(ale_py)
 
 
@@ -135,49 +136,6 @@ class OptionCritic:
                     if layer.bias is not None:
                         torch.nn.init.constant_(layer.bias, 0)
 
-    # Batch is a list of tuples from the replay buffer
-    # All will be numpy arrays
-    def update_Q(self, batch) -> None:
-        # Batch is a list of tuples from the replay buffer
-        # Update the Q function
-        # Every element 0 of the tuple is the observation. We need to stack them to get a tensor of observations
-        # Format is (observation, action, reward, observation_prime, terminated or truncated)
-        batch = list(zip(*batch))
-        states = torch.stack([torch.from_numpy(s).float() for s in batch[0]])
-        actions = torch.tensor(batch[1])
-        rewards = torch.tensor(batch[2])
-        next_states = torch.stack([torch.from_numpy(s).float() for s in batch[3]])
-        terminated = torch.tensor(batch[4], dtype=torch.bool)
-        # print(terminated)
-
-        # Get the next values
-        with torch.no_grad():
-            state_encoding = self.backbone.forward(next_states / self.input_scale)
-            next_values = torch.max(
-                self.Q_state_opts.forward(state_encoding), dim=1
-            ).values
-
-        # Use terminated to mask next_values
-        next_values[terminated] = 0
-        y = rewards + self.gamma * next_values
-
-        state_encoding = self.backbone.forward(states / self.input_scale)
-        value_estimates = self.Q_state_opts.forward(state_encoding)
-        # print("Value estimates: ", value_estimates)
-        # print("Actions: ", actions)
-        state_value_estimates = value_estimates.gather(1, actions.unsqueeze(1)).squeeze(
-            1
-        )
-
-        # print(state_value_estimates.shape)
-        # print(y.shape)
-
-        self.optimizer.zero_grad()
-        loss_fn = torch.nn.MSELoss()
-        loss = loss_fn(state_value_estimates, y)
-        # print("LOSS: ",loss)
-        loss.backward()
-        self.optimizer.step()
 
     # TODO: Implement according to g_t^1 of the paper
     def Q_swa(self, reward, state_encoding, option):
@@ -215,10 +173,6 @@ class OptionCritic:
         self,
         number_of_episodes: int,
         max_iterations: int,
-        plot_results=False,
-        use_buffer=True,
-        replay=1000000,
-        batch_size=16,
     ):
         # Collect episode
         # update replay buffer if you have one
@@ -310,12 +264,9 @@ class OptionCritic:
 
     def train(
         self,
-        number_of_episodes: int,
-        max_iterations: int,
-        plot_results=False,
-        use_buffer=True,
-        replay=1000000,
-        batch_size=16,
+        number_of_episodes: int = 1000,
+        max_iterations: int = 5000,
+        stress_config: dict = None,
     ):
         # Collect episode
         # update replay buffer if you have one
@@ -328,6 +279,12 @@ class OptionCritic:
         for episode in tqdm(range(number_of_episodes), leave=False, desc="Episodes"):
             state, _ = self.env.reset(
                 seed=self.seed + episode
+            )  # ADD epsiode so the seed is different for each episode
+
+            if stress_config is not None and (episode == 500):
+                state, _ = self.env.reset(
+                seed=self.seed + episode,
+                **stress_config
             )  # ADD epsiode so the seed is different for each episode
 
             rewards = []
@@ -515,55 +472,22 @@ class OptionCritic:
         return total_rewards_v
 
 
-def run_hyperparam_search(
-    env: gym.Env, number_of_episodes: int, max_iterations: int, plot_results=False
-):
-    # Hyperparameter search
-    results = {}
-    for lr in [0.1, 0.01, 0.001]:
-        for alpha in [0.1, 0.01, 0.001]:
-            for num_options in [2, 4, 8]:
-                model = OptionCritic(
-                    env,
-                    lr=lr,
-                    alpha_critic=alpha,
-                    alpha_option=alpha,
-                    alpha_termination=alpha,
-                    num_options=num_options,
-                )
-                temp_results = model.train(number_of_episodes, max_iterations)
-                if plot_results:
-                    plt.plot(range(max_iterations), temp_results)
-                    plt.title(f"lr: {lr}, alpha: {alpha}, num_options: {num_options}")
-                    plt.show()
-                results[f"lr{lr}_a{alpha}_opt{num_options}"] = temp_results
-    return results
-
 
 if __name__ == "__main__":
     env_name = "CartPole-v1"
     # env_name = "Acrobot-v1"
     # env_name = "ALE/Assault-ram-v5"
+    env_name = "ALE/Pacman-ram-v5"
     env = gym.make(env_name)
 
     # results = run_hyperparam_search(env, 100, 2000000, plot_results=True)
     # save results to json
-    # import json
-    # with open("results.json", "w") as f:
-    # json.dump(results, f)
-    model = OptionCritic(
-        env,
-        seed=25,
-        T=4,
-        input_scale=1,
-        num_options=2,
-        lr=0.00005,
-        alpha_critic=0.001,
-        alpha_option=0.1,
-        alpha_termination=0.1,
-    )
+    #import json
+    #with open("results.json", "w") as f:
+        #json.dump(results, f)
+    model = OptionCritic(env, seed=25, epsilon= 0.2, gamma= 0.99, T=2, input_scale=1, num_options=1, lr = 0.0001, alpha_critic =0.001, alpha_option=0.1, alpha_termination=0.1, overall_alpha=0.0001)
     # model = Reinforce(env, lr=0.005, seed=25, T=8, T_decay=0.9975)
-    num_epsides = 2000
+    num_epsides = 300
     results = model.train(num_epsides, 2000000)
 
     # plot results
