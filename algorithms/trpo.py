@@ -183,14 +183,15 @@ class TRPO:
             i += 1
 
     def train(
-        self, stress_config: Dict, number_of_episodes=1000, max_iterations=1000
+        self, stress_config: Dict = None, number_of_episodes=1000, max_iterations=1000
     ) -> List[float]:
 
         total_rewards = []
         for eps in tqdm(range(number_of_episodes), desc="TRPO running..."):
-            if self.do_stress_test and (eps == 5):
+            if stress_config is not None and (eps == 500):
+                self.env.reset(**stress_config)
                 print(f"Stress Test called at episode: {eps}")
-                self.env.stress_test(**stress_config)
+                #self.env.stress_test(**stress_config)
             states, actions, rewards = self.run_episode(
                 max_episode_length=max_iterations
             )

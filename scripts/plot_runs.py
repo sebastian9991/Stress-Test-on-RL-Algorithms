@@ -28,13 +28,37 @@ def plot_runs(
     plot_rewards_over_time_files(files, show=show, save=save, average_over=average_over)
 
     # ### For each hyperparameter, plot the performance in the last 100 episodes as a function of the hyperparameter values ###
-    # if hyperparams is not None:
-    #     plot_hyperparam_performance(files, hyperparams, show=show, save=save)
+    if hyperparams is not None:
+         plot_hyperparam_performance(files, hyperparams, show=show, save=save)
 
     ### For the top k hyperparameter combinations (as defined as the highest average reward over the last 100 episodes), plot the performance over time ###
     plot_top_k_rewards_over_time(
         files, k=k, show=show, save=save, average_over=average_over
     )
+
+def plot_files_together(
+        files: list[str],
+        show: bool = True,
+        save: bool = False,
+        average_over=50,
+    ) -> None:
+        """Plot the rewards over time for each hyperparameter combination in a set of files
+        Args:
+        files (list): A list of json files to plot.
+        show (bool): Whether to show the plot.
+        save (bool): Whether to save the plot.
+        average_over (int): The number of episodes to average over for the moving average plot.
+        """
+        rewards = {}
+        for file in files:
+            with open(file) as f:
+                file_rewards = json.load(f)
+                # Add a preamble to the labels
+                file_rewards = {f"{file[:-5]}_{key}": value for key, value in file_rewards.items()}
+                rewards.update(file_rewards)
+        plot_rewards_over_time(
+        rewards, show=show, save=save, average_over=average_over, file="combined.json"
+        )
 
 
 def plot_hyperparam_performance(
