@@ -60,8 +60,8 @@ class PPO:
         seed: int,
         do_stress_test: bool = False,
         epsilon: float = 0.1,
-        n_iter_conv: int = 5,
-        step_size: float = 0.001
+        n_iter_conv: int = 20,
+        step_size: float = 0.02
     ):
         self.epsilon = epsilon
         self.K = n_iter_conv
@@ -70,11 +70,14 @@ class PPO:
         self.seed = seed
         self.do_stress_test = do_stress_test
         self.step_size = step_size
+        self.seed_model(self.seed)
+        self.episode = 0
 
     def seed_model(self, seed):
         # Set random seeds for reproducibility
         if seed is not None:
             torch.manual_seed(seed)
+            torch.random.manual_seed(seed)
             np.random.seed(seed)
             random.seed(seed)
 
@@ -96,8 +99,10 @@ class PPO:
             idx += numel
 
     def run_episode(self, max_episode_length):
+
         states, actions, rewards = [], [], []
-        state = self.env.reset()  # We let s_0 approx p_0 be defined by the env
+        state = self.env.reset(seed=self.seed+self.episode)  # We let s_0 approx p_0 be defined by the env
+        self.episode += 1
         if isinstance(state, tuple):
             state = state[0]
 
@@ -143,7 +148,7 @@ class PPO:
         for i in range(len(actions)):
             q = q_values[i]
             r = action_probs[i][actions[i]]/old_probabilities[i][actions[i]]
-            losses.append(-torch.min(r * q, torch.clip(r, 1 - self.epsilon, 1 + self.epsilon) * q))
+            losses.append(torch.min(r * q, torch.clip(r, 1 - self.epsilon, 1 + self.epsilon) * q))
         loss = sum(losses) / len(losses)
 
         return loss
@@ -170,10 +175,10 @@ class PPO:
     ) -> List[float]:
 
         total_rewards = []
-        for eps in tqdm(range(number_of_episodes), desc="TRPO running..."):
-            if self.do_stress_test and (eps == 5):
+        for eps in tqdm(range(number_of_episodes), desc="PPO running..."):
+            if stress_config is not None and (eps == 500):
                 print(f"Stress Test called at episode: {eps}")
-                self.env.stress_test(**stress_config)
+                self.env.reset(**stress_config)
             states, actions, rewards = self.run_episode(
                 max_episode_length=max_iterations
             )
@@ -182,18 +187,19 @@ class PPO:
             self.update_agent(states, actions, rewards, q_values)
             sum_rewards = np.sum(rewards)
             total_rewards.append(sum_rewards)
-            print(sum_rewards)
 
         return total_rewards
 
 
 # For testing purpose
 def main() -> None:
+    seed = 2
     env_name = "CartPole-v1"
     env = gym.make(env_name)
-    policy = PolicyNetwork(env=env)
-    trpo = PPO(env=env, seed=1, policy=policy, epsilon=0.2, n_iter_conv=20, step_size=0.02)
-    rewards = trpo.train({})
+    env.reset(seed=1)
+    policy = PolicyNetwork(env=env, seed=seed)
+    ppo = PPO(env=env, seed=seed, policy=policy, epsilon=0.2, n_iter_conv=20, step_size=0.02)
+    rewards = ppo.train({})
     episodes = np.arange(len(rewards))
     mean_reward = np.mean(rewards, axis=0)
     std_reward = np.std(rewards, axis=0)
@@ -201,7 +207,7 @@ def main() -> None:
     plt.plot(
         episodes,
         rewards,
-        label=f"TRPO algorithm w/ Single.",
+        label=f"PPO algorithm w/ Single.",
         color="green",
         linestyle="--",
     )

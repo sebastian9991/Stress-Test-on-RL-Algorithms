@@ -13,6 +13,7 @@ from algorithms.actor_critic import ActorCritic
 from algorithms.option_critic import OptionCritic
 from algorithms.random_agent import RandomAgent
 from algorithms.trpo import TRPO
+from algorithms.ppo import PPO
 from algorithms.dqn import DQN
 from mutable_ale.mutable_cartpole import MutableCartPoleEnv
 from policies.boltzman import BoltzmannPolicy
@@ -29,6 +30,7 @@ from scripts.plot_runs import (plot_files_together, plot_rewards_over_time,
 actor_critic_hyperparams = {"temperature_decay": [True, False]}
 
 trpo_hyperparams = {"delta": [0.01]}
+ppo_hyperparams = {"epsilon": [0.3]}
 
 random_params = {"no_params": [None]}
 
@@ -83,8 +85,7 @@ dqn_hyperparams_stress = {
 # For each environment, shared across models.
 #########################################
 stress_config_cartpole = {
-    "gravity": 12,
-    "masscart": 0.5,
+    "flip_direction": True
 }
 
 stress_config_pacman = {
@@ -113,7 +114,7 @@ def run_hyperparam_search(
 ):
 
     base_seed = 42
-    n_seeds = 10
+    n_seeds = 5
 
     rng = np.random.default_rng(base_seed)
     seeds = [int(s) for s in rng.integers(low=0, high=2**32, size=n_seeds, dtype=np.uint32)]
@@ -149,6 +150,9 @@ def run_hyperparam_search(
                     agent = RandomAgent(env=env_obj, seed=seeds[trial])
                 elif model == "DQN":
                     agent = DQN(env=env_obj, **config, seed=seeds[trial])
+                elif model == "PPO":
+                    policy = PolicyNetwork(env=env_obj)
+                    agent = PPO(env=env_obj, **config, policy=policy, seed=seeds[trial])
                 else:
                     raise ValueError(f"Model {model} not recognized.")
 
@@ -176,8 +180,8 @@ def main():
     print("Main Experiement ran from here:")
     os.makedirs("results", exist_ok=True)
 
-    models = ["TRPO", "ActorCritic", "RandomAgent", "DQN"]
-    params = [trpo_hyperparams, actor_critic_hyperparams, random_params, dqn_hyperparams_stress]
+    models = ["PPO", "TRPO", "ActorCritic", "RandomAgent", "DQN"]
+    params = [ppo_hyperparams, trpo_hyperparams, actor_critic_hyperparams, random_params, dqn_hyperparams_stress]
     envs = ["CartPole-v1", "Pacman-ram-v5"]
     stress_configs = [stress_config_cartpole, stress_config_pacman]
 

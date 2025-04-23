@@ -366,3 +366,5 @@ def plot_rewards_over_time(
     if show:
         plt.show()
     plt.close(fig)
+
+# plot_files_together(["../results/CartPole-v1/PPO_CartPole-v1_results_02.json"])
