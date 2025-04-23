@@ -201,7 +201,7 @@ def main() -> None:
     plt.plot(
         episodes,
         rewards,
-        label=f"TRPO algorithm w/ Single.",
+        label=f"PPO algorithm",
         color="green",
         linestyle="--",
     )
