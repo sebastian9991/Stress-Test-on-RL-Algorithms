@@ -21,9 +21,6 @@ cd Stress-Test-on-RL-Algorithms
 
 # Install core dependencies into an isolated environment
 uv sync
-
-# [Optional] Install extra dependencies to run analytics
-uv sync --group analytics
 ```
 
 ## Usage
