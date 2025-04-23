@@ -285,6 +285,7 @@ def plot_rewards_over_time(
         stds = np.std(rewards[hyperparams], axis=0)
 
         axs[0, 0].plot(means, label=hyperparams, color=colors[i])
+        axs[0, 0].axvline(x=500, color='red', linestyle='--', linewidth=1) #For the stress-test location
         axs[0, 0].set_title("Reward")
         axs[0, 0].set_xlabel("Episode")
         axs[0, 0].set_ylabel("Reward")
@@ -360,9 +361,18 @@ def plot_rewards_over_time(
     )
 
     fig.set_size_inches(14, 8)
-
     if save:
-        plt.savefig(f"{file[:-5]}.png")
+        names = [
+            "reward",
+            "cumulative_reward",
+            "moving_average",
+            "avg_reward_last100"
+        ]
+        for ax, name in zip(axs.flatten(), names):
+            extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+            fig.savefig(f"{file[:-5]}_{name}.png", bbox_inches=extent)
+        plt.savefig(f"{file[:-5]}_full.png")
+
     if show:
         plt.show()
     plt.close(fig)
