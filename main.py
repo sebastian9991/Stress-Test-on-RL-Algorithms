@@ -2,28 +2,28 @@
 import json
 import os
 from itertools import product
-from ale_py import env
+
 import gymnasium as gym
 import matplotlib.pyplot as plt
-from mutable_ale.mutable_ALE import MutableAtariEnv
 import numpy as np
+from ale_py import env
 from tqdm import tqdm
 
 from algorithms.actor_critic import ActorCritic
+from algorithms.dqn import DQN
 from algorithms.option_critic import OptionCritic
 from algorithms.random_agent import RandomAgent
 from algorithms.trpo import TRPO
-from algorithms.dqn import DQN
+from mutable_ale.mutable_ALE import MutableAtariEnv
 from mutable_ale.mutable_cartpole import MutableCartPoleEnv
 from policies.boltzman import BoltzmannPolicy
 from policies.policy_network import PolicyNetwork
 from scripts.plot_runs import (plot_files_together, plot_rewards_over_time,
                                plot_rewards_over_time_files, plot_runs)
 
-
 #########################################
 # HYPERPARAMETERS SHARED ACROSS EXPERIMENTS
-# 
+#
 #########################################
 
 actor_critic_hyperparams = {"temperature_decay": [True, False]}
@@ -34,10 +34,10 @@ random_params = {"no_params": [None]}
 
 #########################################
 # HYPERPARAMETERS FOR NORMAL EXPERIMENT
-# 
+#
 #########################################
 option_critic_hyperparams = {
-    "lr": [ 0.001, 0.0001],
+    "lr": [0.001, 0.0001],
     "gamma": [0.9, 0.99],
     "T": [2],
     "num_options": [2, 4],
@@ -45,14 +45,11 @@ option_critic_hyperparams = {
     "overall_alpha": [0.0001, 0.001],
 }
 
-dqn_hyperparams = {
-    "lr": [0.001, 0.0001],
-    "epsilon": [0.1, 0.2]
-}
+dqn_hyperparams = {"lr": [0.001, 0.0001], "epsilon": [0.1, 0.2]}
 
 #########################################
 # HYPERPARAMETERS FOR STRESS TEST
-# 
+#
 #########################################
 
 option_critic_cartpole_hyperparams_stress = {
@@ -73,10 +70,7 @@ option_critic_pacman_hyperparams_stress = {
     "overall_alpha": [0.0001],
 }
 
-dqn_hyperparams_stress = {
-    "lr": [0.001],
-    "epsilon": [0.1, 0.2]
-}
+dqn_hyperparams_stress = {"lr": [0.001], "epsilon": [0.1, 0.2]}
 
 #########################################
 # STRESS TEST CONFIGURATIONS
@@ -116,7 +110,9 @@ def run_hyperparam_search(
     n_seeds = 10
 
     rng = np.random.default_rng(base_seed)
-    seeds = [int(s) for s in rng.integers(low=0, high=2**32, size=n_seeds, dtype=np.uint32)]
+    seeds = [
+        int(s) for s in rng.integers(low=0, high=2**32, size=n_seeds, dtype=np.uint32)
+    ]
 
     if stress_config is not None and len(stress_config) != len(envs):
         raise ValueError(
@@ -141,10 +137,14 @@ def run_hyperparam_search(
                     agent = OptionCritic(env=env_obj, **config, seed=seeds[trial])
                 elif model == "TRPO":
                     policy = PolicyNetwork(env=env_obj)
-                    agent = TRPO(env=env_obj, **config, policy=policy, seed=seeds[trial])
+                    agent = TRPO(
+                        env=env_obj, **config, policy=policy, seed=seeds[trial]
+                    )
                 elif model == "ActorCritic":
                     policy = BoltzmannPolicy(env=env_obj, initial_temperature=1.0)
-                    agent = ActorCritic(env=env_obj, **config, policy=policy, seed=seeds[trial])
+                    agent = ActorCritic(
+                        env=env_obj, **config, policy=policy, seed=seeds[trial]
+                    )
                 elif model == "RandomAgent":
                     agent = RandomAgent(env=env_obj, seed=seeds[trial])
                 elif model == "DQN":
@@ -177,7 +177,12 @@ def main():
     os.makedirs("results", exist_ok=True)
 
     models = ["TRPO", "ActorCritic", "RandomAgent", "DQN"]
-    params = [trpo_hyperparams, actor_critic_hyperparams, random_params, dqn_hyperparams_stress]
+    params = [
+        trpo_hyperparams,
+        actor_critic_hyperparams,
+        random_params,
+        dqn_hyperparams_stress,
+    ]
     envs = ["CartPole-v1", "Pacman-ram-v5"]
     stress_configs = [stress_config_cartpole, stress_config_pacman]
 
@@ -191,7 +196,7 @@ def main():
             number_of_episodes=1000,
             envs=envs,
         )
-    
+
     # RUN STRESS TEST ON OPTION CRITIC
     run_hyperparam_search(
         model="OptionCritic",
@@ -212,18 +217,27 @@ def main():
     )
 
     # Plot runs
-    plot_files_together(['results/CartPole-v1/ActorCritic_CartPole-v1_results.json',
-'results/CartPole-v1/DQN_CartPole-v1_results.json',
-'results/CartPole-v1/OptionCritic_CartPole-v1_results.json',
-'results/CartPole-v1/RandomAgent_CartPole-v1_results.json',
-'results/CartPole-v1/TRPO_CartPole-v1_results.json',])
-    
+    plot_files_together(
+        [
+            "results/CartPole-v1/ActorCritic_CartPole-v1_results.json",
+            "results/CartPole-v1/DQN_CartPole-v1_results.json",
+            "results/CartPole-v1/OptionCritic_CartPole-v1_results.json",
+            "results/CartPole-v1/RandomAgent_CartPole-v1_results.json",
+            "results/CartPole-v1/TRPO_CartPole-v1_results.json",
+        ]
+    )
+
     # Plot runs
-    plot_files_together(['results/Pacman-ram-v5/ActorCritic_Pacman-ram-v5_results.json',
-'results/Pacman-ram-v5/DQN_Pacman-ram-v5_results.json',
-'results/Pacman-ram-v5/OptionCritic_Pacman-ram-v5_results.json',
-'results/Pacman-ram-v5/RandomAgent_Pacman-ram-v5_results.json',
-'results/Pacman-ram-v5/TRPO_Pacman-ram-v5_results.json',])
+    plot_files_together(
+        [
+            "results/Pacman-ram-v5/ActorCritic_Pacman-ram-v5_results.json",
+            "results/Pacman-ram-v5/DQN_Pacman-ram-v5_results.json",
+            "results/Pacman-ram-v5/OptionCritic_Pacman-ram-v5_results.json",
+            "results/Pacman-ram-v5/RandomAgent_Pacman-ram-v5_results.json",
+            "results/Pacman-ram-v5/TRPO_Pacman-ram-v5_results.json",
+        ]
+    )
+
 
 if __name__ == "__main__":
     main()

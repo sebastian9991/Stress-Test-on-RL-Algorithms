@@ -55,9 +55,11 @@ class TRPO:
             p.data.copy_(flat_params[idx : idx + numel].view(p.shape))
             idx += numel
 
-    def run_episode(self, max_episode_length):
+    def run_episode(self, max_episode_length, episode):
         states, actions, rewards = [], [], []
-        state = self.env.reset()  # We let s_0 approx p_0 be defined by the env
+        state = self.env.reset(
+            seed=self.seed + episode
+        )  # We let s_0 approx p_0 be defined by the env
         if isinstance(state, tuple):
             state = state[0]
 
@@ -187,13 +189,14 @@ class TRPO:
     ) -> List[float]:
 
         total_rewards = []
+        self.seed_model(self.seed)
         for eps in tqdm(range(number_of_episodes), desc="TRPO running..."):
             if stress_config is not None and (eps == 500):
                 self.env.reset(**stress_config)
                 print(f"Stress Test called at episode: {eps}")
-                #self.env.stress_test(**stress_config)
+                # self.env.stress_test(**stress_config)
             states, actions, rewards = self.run_episode(
-                max_episode_length=max_iterations
+                max_episode_length=max_iterations, episode=eps
             )
             q_values = self.compute_q_values_single_path(states, actions, rewards)
             q_values = (q_values - q_values.mean()) / (q_values.std() + 1e-8)

@@ -169,9 +169,10 @@ class PPO:
         self, stress_config: Dict, number_of_episodes=1000, max_iterations=1000
     ) -> List[float]:
 
+        self.seed_model(self.seed)
         total_rewards = []
         for eps in tqdm(range(number_of_episodes), desc="TRPO running..."):
-            if self.do_stress_test and (eps == 5):
+            if self.do_stress_test and (eps == 500):
                 print(f"Stress Test called at episode: {eps}")
                 self.env.stress_test(**stress_config)
             states, actions, rewards = self.run_episode(
