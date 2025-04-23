@@ -14,7 +14,7 @@ pip install uv
 
 ```sh
 # Clone the repo
-git clone 
+git clone git@github.com:sebastian9991/Stress-Test-on-RL-Algorithms.git
 
 # Enter the repo directory
 cd Stress-Test-on-RL-Algorithms
@@ -28,7 +28,7 @@ uv sync --group analytics
 
 ## Usage
 
-### Running Plausibility Vaccine
+### Running Full Stress-Test Experiements
 
 _Full End-to-End Experiments_
 
