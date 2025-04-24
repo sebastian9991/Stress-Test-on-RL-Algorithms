@@ -177,7 +177,7 @@ class PPO:
         self.seed_model(self.seed)
         total_rewards = []
         for eps in tqdm(range(number_of_episodes), desc="TRPO running..."):
-            if self.do_stress_test and (eps == 500):
+            if stress_config is not None and (eps == 500):
                 print(f"Stress Test called at episode: {eps}")
                 self.env.reset(**stress_config)
             states, actions, rewards = self.run_episode(
