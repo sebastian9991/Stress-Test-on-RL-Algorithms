@@ -51,6 +51,7 @@ class ActorCritic:
         self.env = env
         self.actor = policy
         self.seed = seed
+        self.seed_model(seed)
         self.do_stress_test = do_stress_test
         self.critic = MLP_Xavier(self.state_dim, 1)
         self.actor_optimizer = optim.Adam(

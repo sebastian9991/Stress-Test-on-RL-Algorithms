@@ -30,9 +30,13 @@ class BoltzmannPolicy(Policy):
         initial_temperature: float,
         min_temperature: float = 0.1,
         decay_steps: int = 1000,
+        seed: int = None,
     ):
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.n
+        self.seed = seed
+        if seed is not None:
+            self.seed_model(seed)
         self.policy_net = MLP(state_dim, action_dim)
         self.temperature = initial_temperature
         self.min_temperature = min_temperature
@@ -48,6 +52,10 @@ class BoltzmannPolicy(Policy):
         prob = torch.softmax(logits / self.temperature, dim=-1)
         action = torch.multinomial(prob, num_samples=1).item()
         return action, prob[action]
+    
+    def seed_model(self, seed: int) -> None:
+        torch.manual_seed(seed)
+        self.seed = seed
 
     def decay_temperature(self):
         self.scheduler.step()
