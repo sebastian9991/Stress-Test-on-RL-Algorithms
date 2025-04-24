@@ -200,7 +200,7 @@ class TRPO:
             )
             q_values = self.compute_q_values_single_path(states, actions, rewards)
             q_values = (q_values - q_values.mean()) / (q_values.std() + 1e-8)
-            self.update_agent(states, actions, rewards, q_values)
+            self.update_agent(torch.tensor(states).to(torch.float), actions, rewards, q_values)
             sum_rewards = np.sum(rewards)
             total_rewards.append(sum_rewards)
 

@@ -108,7 +108,7 @@ def run_hyperparam_search(
 ):
 
     base_seed = 42
-    n_seeds = 5
+    n_seeds = 10
 
     rng = np.random.default_rng(base_seed)
     seeds = [
@@ -137,12 +137,12 @@ def run_hyperparam_search(
                 if model == "OptionCritic":
                     agent = OptionCritic(env=env_obj, **config, seed=seeds[trial])
                 elif model == "TRPO":
-                    policy = PolicyNetwork(env=env_obj)
+                    policy = PolicyNetwork(env=env_obj, seed =seeds[trial])
                     agent = TRPO(
                         env=env_obj, **config, policy=policy, seed=seeds[trial]
                     )
                 elif model == "ActorCritic":
-                    policy = BoltzmannPolicy(env=env_obj, initial_temperature=1.0)
+                    policy = BoltzmannPolicy(env=env_obj, initial_temperature=1.0, seed=seeds[trial])
                     agent = ActorCritic(
                         env=env_obj, **config, policy=policy, seed=seeds[trial]
                     )
@@ -151,7 +151,7 @@ def run_hyperparam_search(
                 elif model == "DQN":
                     agent = DQN(env=env_obj, **config, seed=seeds[trial])
                 elif model == "PPO":
-                    policy = PolicyNetwork(env=env_obj)
+                    policy = PolicyNetwork(env=env_obj, seed=seeds[trial])
                     agent = PPO(env=env_obj, **config, policy=policy, seed=seeds[trial])
                 else:
                     raise ValueError(f"Model {model} not recognized.")
@@ -227,6 +227,7 @@ def main():
             "results/CartPole-v1/OptionCritic_CartPole-v1_results.json",
             "results/CartPole-v1/RandomAgent_CartPole-v1_results.json",
             "results/CartPole-v1/TRPO_CartPole-v1_results.json",
+            "results/CartPole-v1/PPO_CartPole-v1_results.json"
         ]
     )
 
@@ -238,6 +239,7 @@ def main():
             "results/Pacman-ram-v5/OptionCritic_Pacman-ram-v5_results.json",
             "results/Pacman-ram-v5/RandomAgent_Pacman-ram-v5_results.json",
             "results/Pacman-ram-v5/TRPO_Pacman-ram-v5_results.json",
+            "results/CartPole-v1/PPO_CartPole-v1_results.json"
         ]
     )
 
