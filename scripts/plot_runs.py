@@ -41,6 +41,7 @@ def plot_files_together(
         show: bool = True,
         save: bool = False,
         average_over=50,
+        title: str = "Combined",
     ) -> None:
         """Plot the rewards over time for each hyperparameter combination in a set of files
         Args:
@@ -54,10 +55,10 @@ def plot_files_together(
             with open(file) as f:
                 file_rewards = json.load(f)
                 # Add a preamble to the labels
-                file_rewards = {f"{file[:-5]}_{key}": value for key, value in file_rewards.items()}
+                file_rewards = {f"{file[8:-5]}_{key}": value for key, value in file_rewards.items()}
                 rewards.update(file_rewards)
         plot_rewards_over_time(
-        rewards, show=show, save=save, average_over=average_over, file="combined.json"
+        rewards, show=show, save=save, average_over=average_over, file=title + ".json"
         )
 
 
@@ -350,7 +351,10 @@ def plot_rewards_over_time(
 
     numbered_labels = []
     for i, label in enumerate(labels):
-        numbered_labels.append(f"{i}" + ": " + label)
+        numbered_label = f"{i}" + ": " + label
+        if len(label) > 80:
+            numbered_label = label[:80] + "\n" + label[80:]
+        numbered_labels.append(numbered_label)
     fig.tight_layout(pad=1.2, rect=[0, 0, 0.7, 1])
     fig.legend(
         handles,
