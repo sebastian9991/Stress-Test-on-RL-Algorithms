@@ -25,7 +25,7 @@ uv sync
 
 ## Usage
 
-### Running Full Stress-Test Experiements
+### Running Full Stress-Test Experiments
 
 _Full End-to-End Experiments_
 
