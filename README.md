@@ -23,7 +23,16 @@ The stress test methodology involves:
 
 **Test Environments:**
 - **CartPole-v1**: Tests balance control with modified physics parameters
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d0022a33-44d7-4769-9fa8-7c475e078192" alt="CartPole Environment" width="600"/>
+</p>
+
 - **Pacman (Atari)**: Tests game-playing with altered difficulty modes
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/8b3543c3-d562-4e34-898f-963304b55d83" alt="Pacman Environment" width="160"/>
+</p>
 
 ## Getting Started
 
@@ -90,4 +99,20 @@ Experiments generate:
 - Per-algorithm performance metrics
 
 Results are saved as JSON files and PNG plots in the `results/` directory.
+
+### Example Results: CartPole Stress Test
+
+The following table shows average rewards per episode for the final 100 episodes across different gravity levels (stress test transitions from 9.8 m/s² to 24.5 m/s² at episode 500):
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/628326ab-1fc8-4df0-834f-448ee4f04cf1" alt="CartPole Results Table" width="850"/>
+</p>
+
+The reward plot below demonstrates the impact of the stress test, showing a clear decrease in rewards immediately after increasing gravity from 9.8 m/s² to 24.5 m/s² at episode 500:
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/7020d86d-f943-436b-8ad7-8a9b9553e741" alt="CartPole Reward Plot" width="911"/>
+</p>
+
+**Note:** The full experimental report is available in `Testing_Generalizatibility_Stress_Test.pdf`.
 
